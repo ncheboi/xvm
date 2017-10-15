@@ -5,17 +5,17 @@ import (
 	"io/ioutil"
 	"fmt"
 	"log"
-	"path"
 	"path/filepath"
+
+	"./utils"
+	"./group"
+	"./plugin"
+	"./delegate"
 )
 
-func dumpFile(name string) {
-	pwd, err := os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fullpath := filepath.Join(path.Dir(pwd), "doc", name)
+// Print a file in $XVMPATH/doc to Stdout.
+func printDoc(name string) {
+	fullpath := filepath.Join(utils.XvmPath(), "doc", name)
 	buf, err := ioutil.ReadFile(fullpath)
 	if err != nil {
 		log.Fatal(err)
@@ -24,28 +24,25 @@ func dumpFile(name string) {
 	fmt.Println(string(buf))
 }
 
-func group(args []string) {}
-func plugin(args []string) {}
-func delegate(args []string) {}
-
+// Print documentation from $XVMPATH/doc,
+// delegate other arguments to subpackages.
 func main() {
 	args := os.Args
 	if (len(args) < 2) {
-		return;
+		printDoc("usage")
+		return
 	}
 
 	switch args[1] {
-	case "version":
-		dumpFile("version")
-	case "usage":
-		dumpFile("usage")
-	case "help":
-		dumpFile("help")
+	case "version", "usage", "help":
+		printDoc(args[1])
 	case "group", "set", "unset":
-		group(args)
+		group.Main(args[2:])
 	case "plugin", "uninstall":
-		plugin(args)
+		plugin.Main(args[2:])
 	case "list", "install":
-		delegate(args)
+		delegate.Main(args[2:])
+	default:
+		printDoc("usage")
 	}
 }

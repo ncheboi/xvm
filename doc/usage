@@ -1,0 +1,19 @@
+xvm version
+xvm usage
+xvm help
+
+xvm group init [dir]
+xvm group status [dir]
+xvm group remove [dir]
+
+xvm plugin list
+xvm plugin add [name]
+xvm plugin update [name]
+xvm plugin remove [name]
+
+xvm list <name>
+xvm install <name> [version]
+xvm uninstall <name> [version]
+
+xvm set <name> [group] <version>
+xvm unset <name> [group]

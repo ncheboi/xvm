@@ -44,18 +44,18 @@ echo -e 'PATH=$PATH:~/.xvm/unix\n' >> ~/.bashrc
 
 ## Usage
 
-### The `.xvm` Directory
+### Group
 
 ```bash
-xvm init ~/my-project
+xvm group init [dir]
 ```
 
 ```bash
-xvm status ~/my-project
+xvm group status [dir]
 ```
 
 ```bash
-xvm remove ~/my-project
+xvm group remove [dir]
 ```
 
 ### Plugins
@@ -87,15 +87,15 @@ xvm install js 8.7.0
 ```
 
 ```bash
-xvm set js ~/my-project 8.7.0
+xvm uninstall js 8.7.0
 ```
 
 ```bash
-xvm unset js ~/my-project
+xvm set js [dir] 8.7.0
 ```
 
 ```bash
-xvm remove js 8.7.0
+xvm unset js [dir]
 ```
 
 ### The `.xvm/config` File

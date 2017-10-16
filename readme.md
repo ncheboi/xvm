@@ -41,34 +41,3 @@ And add the following to your `~/.bashrc`:
 ```bash
 echo -e 'PATH=$PATH:~/.xvm/unix\n' >> ~/.bashrc
 ```
-
-## Usage
-
-### The `.xvm/config` File
-
-Add the following lines to `.xvm/config` as needed.
-
-- `gitignore`
-- `no-confirm-remove`
-
-### Common Things
-
-- Keeping `.xvm` out of source control.
-
-	```bash
-	echo -e '.xvm\n' >> .gitignore
-	```
-
-## Development
-
-### Hooks
-
-### The Plugin Interface
-
-```bash
-my-plugin list
-```
-
-```bash
-my-plugin install
-```

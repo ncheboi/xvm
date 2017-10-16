@@ -1,0 +1,16 @@
+xvm version
+xvm usage
+xvm help
+
+xvm init
+xvm which
+xvm status [local|global]
+xvm remove
+
+xvm list      <plugin> [installed|available]
+xvm install   <plugin> [<version>]
+xvm uninstall <plugin> [<version>]
+xvm update    <plugin>
+
+xvm set   [local|global] <plugin> <version>
+xvm unset [local|global] <plugin>

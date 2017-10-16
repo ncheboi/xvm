@@ -60,6 +60,8 @@ xvm group remove [dir]
 
 ### Plugins
 
+Adding `local` or `remote` lists local or remote plugins.
+
 ```bash
 xvm plugin list
 ```
@@ -77,6 +79,8 @@ xvm plugin remove js
 ```
 
 ### Versions
+
+Adding `local` or `remote` lists local or remote versions.
 
 ```bash
 xvm list js

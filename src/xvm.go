@@ -2,47 +2,55 @@ package main
 
 import (
 	"os"
-	"io/ioutil"
 	"fmt"
-	"log"
-	"path/filepath"
 
-	"./utils"
+	_"./utils"
+	"./docs"
 	"./group"
 	"./plugin"
 	"./delegate"
 )
 
-// Print a file in $XVMPATH/doc to Stdout.
-func printDoc(name string) {
-	fullpath := filepath.Join(utils.XvmPath(), "doc", name)
-	buf, err := ioutil.ReadFile(fullpath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println(string(buf))
+// Print an error to Stderr and exit with a given code.
+func exitWithError(err error, code int) {
+	fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+	os.Exit(code)
 }
 
-// Print documentation from $XVMPATH/doc,
-// delegate other arguments to subpackages.
+// Controls program exit. Delegates to subcommands.
 func main() {
 	args := os.Args
 	if (len(args) < 2) {
-		printDoc("usage")
+		if err := docs.Print("usage"); err != nil {
+			exitWithError(err, 1)
+		}
 		return
 	}
 
 	switch args[1] {
 	case "version", "usage", "help":
-		printDoc(args[1])
+		if err := docs.Print(args[1]); err != nil {
+			exitWithError(err, 1)
+		}
+
 	case "group", "set", "unset":
-		group.Main(args[2:])
+		if err := group.Main(args); err != nil {
+			exitWithError(err, 1)
+		}
+
 	case "plugin", "uninstall":
-		plugin.Main(args[2:])
+		if err := plugin.Main(args); err != nil {
+			exitWithError(err, 1)
+		}
+
 	case "list", "install":
-		delegate.Main(args[2:])
+		if err := delegate.Main(args); err != nil {
+			exitWithError(err, 1)
+		}
+
 	default:
-		printDoc("usage")
+		if err := docs.Print("usage"); err != nil {
+			exitWithError(err, 1)
+		}
 	}
 }

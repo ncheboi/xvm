@@ -18,7 +18,7 @@ In powershell, clone the source into your user profile directory:
 git clone https://github.com/skotchpine/xvm "$env:USERPROFILE/.xvm"
 ```
 
-Add `.xvm\bin` to your path:
+And add `.xvm\bin` to your path:
 
 ```powershell
 [Environment]::SetEnvironmentVariable(
@@ -36,71 +36,13 @@ Clone the source into your home directory:
 git clone https://github.com/skotchpine/xvm .xvm
 ```
 
-Add the following to your `~/.bashrc`:
+And add the following to your `~/.bashrc`:
 
 ```bash
 echo -e 'PATH=$PATH:~/.xvm/unix\n' >> ~/.bashrc
 ```
 
 ## Usage
-
-### Group
-
-```bash
-xvm group init [dir]
-```
-
-```bash
-xvm group status [dir]
-```
-
-```bash
-xvm group remove [dir]
-```
-
-### Plugins
-
-Adding `local` or `remote` lists local or remote plugins.
-
-```bash
-xvm plugin list
-```
-
-```bash
-xvm plugin add js
-```
-
-```bash
-xvm plugin update js
-```
-
-```bash
-xvm plugin remove js
-```
-
-### Versions
-
-Adding `local` or `remote` lists local or remote versions.
-
-```bash
-xvm list js
-```
-
-```bash
-xvm install js 8.7.0
-```
-
-```bash
-xvm uninstall js 8.7.0
-```
-
-```bash
-xvm set js [dir] 8.7.0
-```
-
-```bash
-xvm unset js [dir]
-```
 
 ### The `.xvm/config` File
 

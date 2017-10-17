@@ -21,11 +21,7 @@ git clone https://github.com/skotchpine/xvm "$env:USERPROFILE/.xvm"
 And add `.xvm\bin` to your path:
 
 ```powershell
-[Environment]::SetEnvironmentVariable(
-	"Path",
-	$env:Path + ";$env:USERPROFILE\.xvm\win32",
-	[System.EnvironmentVariableTarget]::Machine
-)
+[Environment]::SetEnvironmentVariable("Path", "$env:USERPROFILE\.xvm\win32;" + $env:Path, [System.EnvironmentVariableTarget]::Machine)
 ```
 
 ### Unix (Mac OSX, Linux or BSD)
@@ -39,5 +35,5 @@ git clone https://github.com/skotchpine/xvm .xvm
 And add the following to your `~/.bashrc`:
 
 ```bash
-echo -e 'PATH=$PATH:~/.xvm/unix\n' >> ~/.bashrc
+echo -e 'PATH=~/.xvm/bin.unix:$PATH\n' >> ~/.bashrc
 ```

@@ -1,4 +1,4 @@
-package xvm
+package plugin
 
 type Plugin struct {
 	Path, Bin, Url string

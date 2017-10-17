@@ -1,5 +1,10 @@
 package xvm
 
+import (
+	"./plugin"
+	"./group"
+)
+
 type Xvm struct {
 	Path, Platform string
 }

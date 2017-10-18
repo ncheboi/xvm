@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+// The group of versions specified for a directory and its children. The path is of
+// the directory containing the .xvm directory.
 type Group struct {
 	Path string
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"./xvm"
+	"."
 )
 
 func main() {

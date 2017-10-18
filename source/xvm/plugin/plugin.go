@@ -1,88 +1,56 @@
 package plugin
 
+import (
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
 type Plugin struct {
-	Path, Bin, Url string
+	Path string // The root of the plugin
+	Bin  string // Path of this platform's install execuatable
+	Url  string // Points to a dist.zip file available over http
 }
 
-func (p *Plugin) PrintAvailable() error {
+// Gets the versions published in plugin/available.
+func (p *Plugin) GetAvailableVersions() ([]string, error) {
 	path := filepath.Join(p.Path, "available")
 
 	versions, err := ioutil.ReadFile(path)
-	if err == nil {
-		fmt.Println(versions)
+	if err != nil {
+		return nil, err
 	}
-	return err
+	return strings.Split(string(versions), "\n"), nil
 }
 
-func (p *Plugin) PrintInstalled() error {
+// Gets all versions installed to plugin/installed and not removed.
+func (p *Plugin) GetInstalledVersions() ([]string, error) {
 	path := filepath.Join(p.Path, "installed")
 
-	versions, err := ioutil.Readdirnames(path)
-	if err == nil {
-		fmt.Println(strings.Join(versions, "\n"))
+	dir, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
-	return err
+	return dir.Readdirnames(0)
 }
 
-func (p *Plugin) Install(version string) error {
-	cmd := exec.Command(p.Bin, "install", version)
+// Delegates all arguments to this platform's install executable.
+func (p *Plugin) Install(args... string) error {
+	cmd := exec.Command(p.Bin, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
+// Removes an installed version from plugin/installed.
 func (p *Plugin) Uninstall(version string) error {
-	cmd := exec.Command(p.Bin, "uninstall", version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	path := filepath.Join(p.Path, "installed", version)
+	return os.RemoveAll(path)
 }
 
-func (p *Plugin) Update() error {
-	resp, err := http.Get(p.Url)
-	if err != nil {
-		return err
-	}
-	if resp.Status != 200 {
-		return fmt.Errorf("Failed to get %s", p.Url)
-	}
-
-	body, err := zip.OpenReader(resp.Body)
-	if err != nil {
-		return err
-	}
-	defer body.Close()
-
-	for _, z := range r.File {
-		r, err := z.Open()
-		if err != nil {
-			return err
-		}
-		defer r.Close()
-
-		path := filepath.Join(p.Path, z.Name)
-		if z.FileInfo().IsDir() {
-			return os.MkdirAll(path, os.ModePerm)
-		}
-
-		dir := filepath.Dir(path)
-		err := os.MkdirAll(dir, os.ModePerm)
-		if err != nil {
-			return err
-		}
-
-		mode := os.O_WRONLY|os.O_CREATE|os.O_TRUNC
-		f, err := os.OpenFile(path, mode, os.ModePerm)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-
-		_, err = io.Copy(f, r)
-		return err
-	}
-}
-
+// Removes the entire plugin.
 func (p *Plugin) Remove() error {
 	return os.RemoveAll(p.Path)
 }

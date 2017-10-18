@@ -6,24 +6,30 @@ import (
 	"path"
 	"path/filepath"
 	"testing"
+
 	"."
 )
 
-func MakeVersionsDir(t *testing.T) string {
+func MakeGroup(t *testing.T) *group.Group {
 	tmp := os.TempDir()
-
 	dir := filepath.Join(tmp, "group", "versions")
-	err := os.MkdirAll(dir, os.ModePerm)
-	if err != nil {
+
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		t.Errorf("Failed to make directories %s", dir)
 	}
 
-	return dir
+	return &group.Group{path.Dir(dir)}
+}
+
+func RemoveGroup(t *testing.T, g *group.Group) {
+	if err := os.RemoveAll(g.Path); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestGetVersions(t *testing.T) {
-	dir := MakeVersionsDir(t)
-	g := &group.Group{path.Dir(dir)}
+	g := MakeGroup(t)
+	defer RemoveGroup(t, g)
 
 	expected := map[string]string{
 		"a": "1",
@@ -31,7 +37,7 @@ func TestGetVersions(t *testing.T) {
 	}
 
 	for plugin, version := range expected {
-		path := filepath.Join(dir, plugin)
+		path := filepath.Join(g.Path, "versions", plugin)
 		err := ioutil.WriteFile(path, []byte(version + "\n"), os.ModePerm)
 		if err != nil {
 			t.Errorf("Failed to write version file %s", path)
@@ -51,8 +57,8 @@ func TestGetVersions(t *testing.T) {
 }
 
 func TestSetUnsetVersion(t *testing.T) {
-	dir := MakeVersionsDir(t)
-	g := &group.Group{path.Dir(dir)}
+	g := MakeGroup(t)
+	defer RemoveGroup(t, g)
 
 	err := g.SetVersion("a", "1")
 	if err != nil {
@@ -80,15 +86,15 @@ func TestSetUnsetVersion(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
-	dir := MakeVersionsDir(t)
-	g := &group.Group{path.Dir(dir)}
+	g := MakeGroup(t)
+	defer RemoveGroup(t, g)
 
 	err := g.Remove()
 	if err != nil {
 		t.Error(err)
 	}
 
-	_, err = os.Stat(dir)
+	_, err = os.Stat(g.Path)
 	if !os.IsNotExist(err) {
 		t.Fail()
 	}

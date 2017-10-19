@@ -37,7 +37,7 @@ func (p *Plugin) GetInstalledVersions() ([]string, error) {
 }
 
 // Delegates all arguments to this platform's install executable.
-func (p *Plugin) Install(args... string) error {
+func (p *Plugin) Install(args []string) error {
 	cmd := exec.Command(p.Bin, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

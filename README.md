@@ -1,5 +1,5 @@
 # xvm
-The X Version Manager: solve for X.
+The X Version Manager: just solve for X.
 
 ## Disclaimer
 

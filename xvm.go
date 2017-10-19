@@ -272,6 +272,9 @@ var cmds = map[string]Cmd{
 			ensurePlugin(p)
 
 			destDir := installedPath(p, version)
+			if !isDir(destDir) {
+				mkdirAll(destDir)
+			}
 
 			contentPath := filepath.Join(p, "available", version)
 			rawContent, err := ioutil.ReadFile(contentPath)

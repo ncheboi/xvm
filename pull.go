@@ -71,5 +71,5 @@ func main() {
 		failIf(err)
 	}
 
-	fmt.Printf("Successfully installed plugin: %s", version)
+	fmt.Printf("Successfully installed plugin: %s\n", version)
 }

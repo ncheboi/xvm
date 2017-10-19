@@ -37,6 +37,7 @@ func StartXvm() *Xvm {
 		case "unix":
 			xvm.Path = filepath.Join(os.Getenv("HOME"), ".xvm")
 		}
+		os.Setenv("XVMPATH", xvm.Path)
 	}
 
 	return xvm

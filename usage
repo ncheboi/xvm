@@ -2,10 +2,14 @@ xvm version
 xvm usage
 xvm help
 
-xvm init .
+xvm init
 xvm which
 xvm status [local|global]
 xvm remove
+
+xvm list plugin [installed|available]
+xvm pull plugin <version>
+xvm drop plugin <version>
 
 xvm list <plugin> [installed|available]
 xvm pull <plugin> <version>

@@ -62,7 +62,7 @@ func main() {
 		defer fileReader.Close()
 
 		// Copying files will be destructive.
-		mask := os.O_WRONLY|os.O_CREATE|os.O_TRUNC
+		mask := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 		fileWriter, err := os.OpenFile(realPath, mask, zipfile.Mode())
 		failIf(err)
 		defer fileWriter.Close()

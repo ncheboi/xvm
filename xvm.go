@@ -12,12 +12,12 @@ import (
 
 var (
 	platform string
-	xvmName string
-	xvmHome string
-	osHome  string
-	global  string
-	local   string
-	pwd     string
+	xvmName  string
+	xvmHome  string
+	osHome   string
+	global   string
+	local    string
+	pwd      string
 )
 
 type Cmd struct {

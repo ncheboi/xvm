@@ -1,0 +1,22 @@
+XVM - The X Version Manager: just solve for X
+=============================================
+
+Installing on Windows
+---------------------
+In powershell, clone the source into your user profile directory:
+git clone https://github.com/skotchpine/xvm "$env:USERPROFILE/.xvm"
+
+And add $USERPROFILE\xvm\bin to your path:
+[Environment]::SetEnvironmentVariable("Path", "$env:USERPROFILE\.xvm\win32;" + $env:Path, [System.EnvironmentVariableTarget]::Machine)
+
+Installing on Unix
+------------------
+Clone the source into your home directory:
+git clone https://github.com/skotchpine/xvm .xvm
+
+And add the following to your ~/.bashrc:
+echo -e 'PATH=~/.xvm/bin.unix:$PATH\n' >> ~/.bashrc
+
+Usage
+-----
+Run `xvm usage` or dee the usage file that shipped with your dist.zip.

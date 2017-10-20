@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Gets a new dist.zip, unzips it and truncates conflicting files.
@@ -15,6 +16,10 @@ func main() {
 	destDir := os.Getenv("XVM_PULL_DESTDIR") // where X should be installed
 	version := os.Getenv("XVM_PULL_VERSION") // the name of the version requested
 	content := os.Getenv("XVM_PULL_CONTENT") // the content of the version's file
+
+	if content[len(content)-1] == "\n" {
+		content = content[:len(content)-2]
+	}
 
 	fail := func(msg string, etc ...interface{}) {
 		fmt.Fprintf(os.Stderr, msg+"\n", etc...)

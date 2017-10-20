@@ -3,17 +3,20 @@ xvm usage
 xvm help
 
 xvm init
-xvm which
-xvm status [local|global]
+xvm which [<plugin>]
+xvm status [local|global] [<plugin>]
 xvm remove
 
-xvm list plugin [installed|available]
-xvm pull plugin <version>
-xvm drop plugin <version>
-
-xvm list <plugin> [installed|available]
-xvm pull <plugin> <version>
-xvm drop <plugin> <version>
-
-xvm set   [local|global] <plugin> <version>
+xvm set   [local|global] <plugin> <version>|stable|latest
 xvm unset [local|global] <plugin>
+
+xvm show <plugin> [installed|available|stable|latest]
+xvm pull <plugin> <version>|stable|latest
+xvm drop <plugin> <version>|stable|latest
+
+xvm show plugin [installed|available]
+xvm pull plugin <name>
+xvm drop plugin <name>
+
+xvm edit plugin <name>
+xvm push plugin <name>

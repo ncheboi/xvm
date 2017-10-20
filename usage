@@ -7,16 +7,13 @@ xvm which [<pack>]
 xvm status [local|global] [<pack>]
 xvm remove
 
-xvm set   [local|global] <pack> <version>|stable|latest
-xvm unset [local|global] <pack>
-
 xvm show <pack> [installed|available|stable|latest]
 xvm pull <pack> <version>|stable|latest
 xvm drop <pack> <version>|stable|latest
 
-xvm show pack [installed|available]
-xvm pull pack <name>
-xvm drop pack <name>
+xvm set   [local|global] <pack> <version>|stable|latest
+xvm unset [local|global] <pack>
 
-xvm edit pack <name>
-xvm push pack <name>
+xvm edit pack <pack>
+xvm auth pack <pack>
+xvm push pack <pack>

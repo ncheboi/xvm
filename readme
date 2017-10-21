@@ -19,4 +19,4 @@ echo -e 'PATH=~/.xvm/bin.unix:$PATH\n' >> ~/.bashrc
 
 Usage
 -----
-Run `xvm usage` or dee the usage file that shipped with your dist.zip.
+See https://github.com/skotchpine/xvm/blob/master/usage

@@ -1,452 +1,574 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 )
 
 var (
-	osBinName string
-	platform string
-	xvmName  string
-	xvmHome  string
-	osHome   string
-	global   string
-	local    string
-	pwd      string
+	globalDirPath, globalGroupPath string
+	localDirPath,  localGroupPath  string
+	pwd string
+
+	installedMap map[string][]string
+	availableMap map[string][]string
+	binMap     map[string]string
+
+	localMap   map[string]string
+	globalMap  map[string]string
+	currentMap map[string]string
 )
 
-type Cmd struct {
-	min, max int
-	fn       func()
+func warn(msg string, etc ...interface{}) {
+	fmt.Fprintf(os.Stderr, msg+"\n", etc...)
 }
 
-func (cmd *Cmd) run() {
-	if cmd.min > 0 && len(os.Args) < cmd.min {
-		printGlobalFile("usage")
-		os.Exit(1)
-	}
-
-	if cmd.min > 0 && len(os.Args) > cmd.max {
-		printGlobalFile("usage")
-		os.Exit(1)
-	}
-
-	cmd.fn()
-}
-
-func fail(msg string, a ...interface{}) {
-	fmt.Fprintf(os.Stderr, msg+"\n", a...)
+func fail(msg string, etc ...interface{}) {
+	warn(msg, etc...)
 	os.Exit(1)
 }
 
-func failIf(err error) {
+func cmd(path string, arg ...string) error {
+	c := exec.Command(path, arg...)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
+}
+
+func join(elem ...string) string {
+	return filepath.Join(elem...)
+}
+
+func dirnames(elem ...string) ([]string, error) {
+	dir, err := os.Open(join(elem...))
 	if err != nil {
-		fail(err.Error())
+		return nil, err
 	}
+	return dir.Readdirnames(0)
 }
 
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return false
+func readline(elem ...string) (string, error) {
+	file, err := os.Open(join(elem...))
+	if err != nil {
+		return "", err
 	}
-	failIf(err)
-	return info.IsDir()
-}
-
-func isFile(path string) bool {
-	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return false
-	}
-	failIf(err)
-	return !info.IsDir() && info.Mode().IsRegular()
-}
-
-func removeAll(path string) {
-	failIf(os.RemoveAll(path))
-}
-
-func mkdirAll(path string) {
-	failIf(os.MkdirAll(path, 0755))
-}
-
-func writeFile(path string, content string) {
-	failIf(ioutil.WriteFile(path, []byte(content), 0755))
-}
-
-func dirNames(path string) []string {
-	dir, err := os.Open(path)
-	failIf(err)
-
-	names, err := dir.Readdirnames(0)
-	failIf(err)
-
-	return names
-}
-
-func xvmPath(path string) string {
-	return filepath.Join(path, xvmName)
-}
-
-func pluginPath(name string) string {
-	if name == "plugin" {
-		return global
-	}
-	return filepath.Join(global, "installed", name)
-}
-
-func ensurePlugin(p string) {
-	if !isDir(p) {
-		fail("Not installed: %s", filepath.Base(p))
-	}
-}
-
-func installedPath(p, name string) string {
-	return filepath.Join(p, "installed", name)
-}
-
-func ensureInstalled(i string) {
-	if !isDir(i) {
-		fail("Not installed: %s", filepath.Base(i))
-	}
-}
-
-func interpretVersion(p, version string) version string {
-	if version != "stable" && version != "latest" {
-		if isFile(filepath.Join(p, version)) {
-			version = readLineOnce(path)
-		}
-	}
-}
-
-func readLineOnce(path string) string {
-	file, err := os.Open(path)
-	failIf(err)
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	scanner.Scan()
-	return scanner.Text()
+	
+	return scanner.Text(), err
 }
 
-func printGlobalFile(name string) {
-	printFile(filepath.Join(global, name))
-}
-
-func printLocalFile(name string) {
-	printFile(filepath.Join(local, name))
-}
-
-func printFile(path string) {
-	contents, err := ioutil.ReadFile(path)
-	failIf(err)
-	fmt.Print(string(contents))
-}
-
-func init() {
-	if runtime.GOOS == "windows" {
-		osBinName = "xvm.exe"
-		platform = "windows"
-		xvmName = "xvm"
-		osHome = os.Getenv("USERPROFILE")
-	} else {
-		osBinName = "xvm"
-		platform = "unix"
-		xvmName = ".xvm"
-		osHome = os.Getenv("HOME")
+func writeline(line string, elem ...string) error {
+	file, err := os.Open(join(elem...))
+	if err != nil {
+		return err
 	}
-	xvmHome = osHome
+	defer file.Close()
 
-	var isSet bool
-	global, isSet = os.LookupEnv("XVMPATH")
-	if isSet {
-		xvmHome = filepath.Dir(global)
-	} else {
-		global = xvmPath(osHome)
+	_, err = file.Write([]byte(line+"\n"))
+	return err
+}
+
+func printfile(elem ...string) {
+	path := join(elem...)
+
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fail("Missing core file %s", path)
+		}
+		fail("")
 	}
+	defer file.Close()
+
+	if _, err := io.Copy(os.Stdout, file); err == nil {
+		os.Exit(0)
+	} else {
+		os.Exit(1)
+	}
+}
+
+func notexist(elem ...string) bool {
+	_, err := os.Stat(join(elem...))
+	return os.IsNotExist(err)
+}
+
+func mkdir(elem ...string) error {
+	return os.MkdirAll(join(elem...), 0755)
+}
+
+func rm(elem ...string) error {
+	return os.RemoveAll(join(elem...))
+}
+
+func alias(pack, alias string) (string, error) {
+	return readline(globalGroupPath, "installed", pack, "aliases", alias)
+}
+
+// Use XVMPATH as the global group. If XVMPATH is not set, the global
+// group resolve by appending the default directory name to the user's home.
+func findGlobalGroup() (group, dir string){
+	var ok bool
+	group, ok = os.LookupEnv("XVMPATH")
+	if !ok || group == "" {
+		group = join(os.Getenv(OSHome), OSDir)
+	}
+	return group, filepath.Dir(group)
+}
+
+// Set the nearest group. If none exist between the working directory
+// and the root, use the global group.
+func findLocalGroup() (group, dir string) {
+	group = globalGroupPath
 
 	pwd, err := os.Getwd()
 	if err != nil {
-		fail("Failed to get working directory")
+		warn("Failed to get working directory")
+		goto returnLocalGroup
 	}
 
-	x := pwd
-	for x != "/" {
-		if x == xvmHome {
-			local = global
+	// Move from the current directory to the root; stop before crossing the global path.
+	for x := pwd; x != "/" && x != globalDirPath; x = filepath.Dir(x) {
+		// If a group is found (xvm directory exists), it is the local group.
+		info, err := os.Stat(join(x, OSDir))
+		if err == nil && info.IsDir() {
+			group = x
 			break
 		}
-
-		if isDir(xvmPath(x)) {
-			local = xvmPath(x)
-			break
-		}
-
-		x = filepath.Dir(x)
 	}
 
-	if local == "" {
-		local = global
-	}
+returnLocalGroup:
+	return group, filepath.Dir(group)
 }
 
-var cmds = map[string]Cmd{
-	"version": {2, 2, // xvm version
-		func() {
-			printGlobalFile("version")
-		},
-	},
-
-	"usage": {2, 2, // xvm usage
-		func() {
-			printGlobalFile("usage")
-		},
-	},
-
-	"help": {2, 2, // xvm help
-		func() {
-			printGlobalFile("readme")
-		},
-	},
-
-	"init": {2, 2, // xvm init
-		func() {
-			if local == xvmPath(pwd) {
-				fail("Group already exists: %s", local)
-			}
-			mkdirAll(filepath.Join(xvmPath(pwd), "versions"))
-		},
-	},
-
-	"which": {2, 3, // xvm which [<plugin>]
-		func() {
-			if len(os.Args) == 3 {
-				path := filepath.Join(local, "versions", os.Args[2])
-				if !isFile(path) {
-					fmt.Println(global)
-					return
-				}
-			}
-
-			fmt.Println(local)
-		},
-	},
-
-	"status": {2, 4, // xvm status [local|global] [<plugin>]
-		func() {
-			which := local
-
-			path := filepath.Join(which, "versions")
-			if !isDir(path) {
-				mkdirAll(path)
-			}
-
-			for i := 2; i < len(os.Args); i++ {
-				if os.Args[i] == "global" {
-					which = global
-				} else if os.Args[i] != "local" {
-					whence := filepath.Join(path, os.Args[i])
-					if isFile(whence) {
-						printFile(whence)
-					}
-					return
-				}
-			}
-
-			for _, plugin := range dirNames(path) {
-				contents, err := ioutil.ReadFile(path)
-				failIf(err)
-
-				fmt.Printf("%s %s", plugin, string(contents))
-			}
-		},
-	},
-
-	"remove": {2, 2, // xvm remove
-		func() {
-			removeAll(local)
-		},
-	},
-
-	"show": {3, 4, // xvm show <plugin> [installed|available|stable|latest]
-		func() {
-			plugin := os.args[2]
-			p := pluginPath(plugin)
-			ensurePlugin(p)
-
-			var kind string
-
-			if len(os.Args) > 3 {
-				switch os.Args[3] {
-				case "stable", "latest":
-					path := filepath.Join(p, os.Args[3])
-					if isFile(path) {
-						printFile(path)
-					}
-					return
-
-				case "installed":
-					kind = "installed"
-				case "available":
-					kind = "available"
-
-				default:
-					fail("Unknown argument: %s", os.Args[3])
-				}
-			}
-
-			path := filepath.Join(p, kind)
-			if isDir(path) {
-				for _, whence := range dirNames(path) {
-					fmt.Println(whence)
-				}
-			}
-		},
-	},
-
-	"pull": {3, 4, // xvm pull <plugin> <version>|stable|latest
-		func() {
-			plugin := os.Args[2]
-			p := pluginPath(plugin)
-			ensurePlugin(p)
-
-			version := interpretVersion(os.Args[3])
-			destDir := installedPath(p, version)
-			if !isDir(destDir) {
-				mkdirAll(destDir)
-			}
-
-			path := filepath.Join(p, "available", version)
-			content, err := ioutil.ReadFile(path)
-			failIf(err)
-
-			bin := filepath.Join(p, platform, "pull")
-
-			os.Setenv("XVM_PULL_DESTDIR", destDir)
-			os.Setenv("XVM_PULL_VERSION", version)
-			os.Setenv("XVM_PULL_CONTENT", content)
-
-			cmd := exec.Command(bin)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-
-			if err := cmd.Run(); err != nil {
-				fail("%s", err)
-			}
-		},
-	},
-
-	"drop": {4, 4, // xvm drop <plugin> <version>|stable|latest
-		func() {
-			plugin := os.Args[2]
-			p := pluginPath(plugin)
-			ensurePlugin(p)
-
-			version := interpretVersion(os.Args[3])
-			i := installedPath(p, version)
-			ensureInstalled(i)
-
-			removeAll(i)
-		},
-	},
-
-	"set": {4, 5, // xvm set [local|global] <plugin> <version>|stable|latest
-		func() {
-			which := local
-			plugin := os.Args[2]
-			version := os.Args[3]
-
-			if len(os.Args) == 5 {
-				if os.Args[2] == "global" {
-					which = global
-				} else if os.Args[2] != "local" {
-					fail("Unknown argument: %s", os.Args[2])
-				}
-
-				plugin = os.Args[3]
-				version = os.Args[4]
-			}
-
-			if plugin == "plugin" {
-				fmt.Println("Plugin cannot be set")
-			}
-
-			p := pluginPath(plugin)
-			ensurePlugin(p)
-
-			version = interpretVersion(version)
-			i := installedPath(p, version)
-			ensureInstalled(i)
-
-			path := filepath.Join(which, "versions", plugin)
-			writeFile(path, filepath.Base(i)+"\n")
-		},
-	},
-
-	"unset": {3, 4, // xvm unset [local|global] <plugin> <version>
-		func() {
-			which := local
-			plugin := os.Args[3]
-
-			if len(os.Args) > 3 {
-				if os.Args[2] == "global" {
-					which = global
-				} else if os.Args[2] != "local" {
-					fail("Unknown argument: %s", os.Args[2])
-				}
-			} else {
-				plugin = os.Args[2]
-			}
-
-			ensurePlugin(pluginPath(plugin))
-			removeAll(filepath.Join(which, "versions", plugin))
-		},
-	},
-
-	"shim": {2, 2, // xvm shim
-		func() {
-		}
-	},
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		printGlobalFile("usage")
-		os.Exit(1)
-	}
-
-	if os.Args[0] != osBinName {
-		exec()
+func mapGroup(versions map[string]string, path string, done chan bool) {
+	packs, err := dirnames(path, "versions")
+	if err != nil {
+		warn("Failed to list versions for %s", path)
 		return
 	}
 
-	cmd, ok := cmds[os.Args[1]]
-	if !ok {
-		fail("Unknown command: %s", os.Args[1])
+	for _, pack := range packs {
+		if _, ok := versions[pack]; ok {
+			continue
+		}
+
+		version, err := readline(path, "versions", pack)
+		if err == nil {
+			versions[pack] = version
+		} else {
+			warn("Failed to get version of %s for %s", pack, path)
+		}
 	}
-	cmd.run()
+
+	done <- true
 }
 
-func shim() {
+func mapGroups(done chan bool) {
+	a, b := make(chan bool), make(chan bool)
+	go mapGroup(localMap, localGroupPath, a)
+	go mapGroup(globalMap, globalGroupPath, b)
+	<-a; <-b
+
+	for k, v := range localMap  { currentMap[k] = v }
+	for k, v := range globalMap { currentMap[k] = v }
+	done <- true
 }
 
-func exec() {
-	if len(os.Args) < 2 {
+func mapPacks(done chan bool) {
+	a, b := make(chan bool), make(chan bool)
+
+	go func() {
+		i := join(globalGroupPath, "installed")
+
+		packs, err := dirnames(i)
+		if err != nil {
+			warn("Failed to search installed packages")
+			a <- true
+			return
+		}
+
+		for _, pack := range packs {
+			j := join(i, pack, "installed")
+
+			versions, err := dirnames(j)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					warn("Failed to list versions for %s", pack)
+				}
+				continue
+			}
+			installedMap[pack] = versions
+
+			for _, version := range versions {
+				k := join(j, version, "bin")
+
+				bins, err := dirnames(k)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						warn("Failed to list binaires for version %s of %s", version, pack)
+					}
+					continue
+				}
+
+				for _, bin := range bins {
+					if _, ok := binMap[bin]; !ok {
+						binMap[bin] = pack
+					}
+				}
+			}
+		}
+
+		a <- true
+	}()
+
+	go func() {
+		i := join(globalGroupPath, "available")
+
+		packs, err := dirnames(i)
+		if err == nil {
+			availableMap["pack"] = packs
+		} else {
+			warn("Failed to list available packages")
+		}
+
+		i = join(globalGroupPath, "installed")
+
+		packs, err = dirnames(i)
+		if err != nil {
+			warn("Failed to search installed packages")
+			b <- true
+		}
+
+		for _, pack := range packs {
+			j := join(i, pack, "available")
+
+			versions, err := dirnames(j)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					warn("Failed to list available versions for %s", pack)
+				}
+				continue
+			}
+			availableMap[pack] = versions
+		}
+
+		b <- true
+	}()
+
+	<-a; <-b
+	done <- true
+}
+
+func wrapBinary(bin string) {
+	var pack, version string
+	var ok bool
+
+	if pack, ok = binMap[bin]; !ok {
+		fail("Failed to find binary %s", bin)
+	}
+	if version, ok = currentMap[pack]; !ok {
+		fail("No version set for package %s", pack)
+	}
+
+	path := join(globalGroupPath, "installed", pack, "installed", version, "bin", bin)
+	if notexist(path) {
+		fail("No executable %s for version %s of %s", bin, version, pack)
+	}
+	if cmd(path) != nil {
 		fail("")
 	}
+}
 
-	args := os.Args[2:]
-	cmd := exec.Command(bin, [][]byte(args))
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+func init() {
+	globalGroupPath, globalDirPath = findGlobalGroup()
+	localGroupPath, localDirPath = findLocalGroup()
 
-	if err := cmd.Run(); err != nil {
-		fail("%s", err)
+	a, b := make(chan bool), make(chan bool)
+
+	localMap = make(map[string]string)
+	globalMap = make(map[string]string)
+	currentMap = make(map[string]string)
+	go mapGroups(a)
+
+	availableMap = make(map[string][]string)
+	installedMap = make(map[string][]string)
+	binMap = make(map[string]string)
+	go mapPacks(b)
+
+	<-a; <-b
+}
+
+func main() {
+	// If the name of this file isn't xvm, but go, java, etc.,
+	// find a relevant binary and execute it
+	name := filepath.Base(os.Args[0])
+	if name != "xvm"+OSExt {
+		wrapBinary(name)
 	}
+
+	if len(os.Args) < 2 {
+		printfile(globalGroupPath, "usage")
+	}
+
+	switch os.Args[1] {
+	case "init":      argWrap(2, 2, initCmd)
+	case "which":     argWrap(2, 4, whichCmd)
+	case "current":   argWrap(2, 4, currentCmd)
+	case "remove":    argWrap(2, 2, removeCmd)
+	case "installed": argWrap(3, 3, installedCmd)
+	case "available": argWrap(3, 3, availableCmd)
+	case "stable":    argWrap(3, 3, stableCmd)
+	case "latest":    argWrap(3, 3, latestCmd)
+	case "set":       argWrap(4, 5, setCmd)
+	case "unset":     argWrap(3, 4, unsetCmd)
+	case "pull":      argWrap(4, 4, pullCmd)
+	case "drop":      argWrap(4, 4, dropCmd)
+	case "edit":      argWrap(3, 3, editCmd)
+	case "auth":      argWrap(3, 3, authCmd)
+	case "push":      argWrap(3, 3, pushCmd)
+
+	case "version":   printfile(globalGroupPath, "version")
+	case "help":      printfile(globalGroupPath, "readme")
+	default:          printfile(globalGroupPath, "usage")
+	}
+}
+
+func argWrap(min, max int, fn func()) {
+	n := len(os.Args)
+	if (min > 0 && n < min) || (max > 0 && n > max) {
+		printfile(globalGroupPath, "usage")
+	}
+	fn()
+}
+
+func initCmd() {
+	if localGroupPath == pwd {
+		fail("Group already exists")
+	}
+	if mkdir(pwd, OSDir, "versions") != nil {
+		fail("")
+	}
+}
+
+func whichCmd() {
+	var group, pack string
+	var ok bool
+
+	for i := 2; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "global", "local":
+			group = os.Args[i]
+		default:
+			pack = os.Args[i]
+		}
+	}
+
+	if pack == "" {
+		if group == "global" {
+			fmt.Println(globalDirPath)
+		} else {
+			fmt.Println(localDirPath)
+		}
+		return
+	}
+
+	if group != "global" {
+		if _, ok = localMap[pack]; ok {
+			fmt.Println(localGroupPath)
+			return
+		}
+	}
+
+	if group != "local" {
+		if _, ok = globalMap[pack]; ok {
+			fmt.Println(globalGroupPath)
+			return
+		}
+	}
+}
+
+func currentCmd() {
+	var group, pack string
+	for i := 2; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "global", "local":
+			group = os.Args[i]
+		default:
+			pack = os.Args[i]
+		}
+	}
+
+	var versions map[string]string
+	switch group {
+	case "global": versions = globalMap
+	case "local":  versions = localMap
+	default:       versions = currentMap
+	}
+
+	if pack != "" {
+		if version, ok := versions[pack]; ok {
+			fmt.Println(version)
+		}
+		return
+	}
+
+	for pack, version := range versions {
+		fmt.Printf("%s %s\n", pack, version)
+	}
+}
+
+func removeCmd() {
+	if localGroupPath == globalGroupPath {
+		fail("Cannot remove global group")
+	}
+	if localGroupPath != pwd {
+		fail("Group does not exist")
+	}
+	if err := rm(pwd, OSDir); err != nil {
+		fail(err.Error())
+	}
+}
+
+func installedCmd() {
+	if versions, ok := installedMap[os.Args[2]]; ok {
+		for _, version := range versions {
+			fmt.Println(version)
+		}
+	}
+}
+
+func availableCmd() {
+	if versions, ok := availableMap[os.Args[2]]; ok {
+		for _, version := range versions {
+			fmt.Println(version)
+		}
+	}
+}
+
+func stableCmd() {
+	if version, err := alias(os.Args[2], "stable"); err == nil {
+		fmt.Println(version)
+	}
+}
+
+func latestCmd() {
+	if version, err := alias(os.Args[2], "latest"); err == nil {
+		fmt.Println(version)
+	}
+}
+
+func setCmd() {
+	pack, version := os.Args[2], os.Args[3]
+	if v, err := alias(pack, version); err == nil {
+		version = v
+	}
+
+	base := localGroupPath
+	if len(os.Args) == 5 {
+		if os.Args[4] == "global" {
+			base = globalGroupPath
+		} else if os.Args[4] != "local" {
+			printfile(globalGroupPath, "usage")
+		}
+	}
+
+	if _, ok := installedMap[pack]; !ok {
+		fail("Version %s of %s is not installed")
+	}
+
+	if writeline(version, base, "versions", pack) != nil {
+		fail("Failed to save version")
+	}
+}
+
+func unsetCmd() {
+	pack := os.Args[2]
+
+	base := localGroupPath
+	if len(os.Args) == 4 {
+		if os.Args[3] == "global" {
+			base = globalGroupPath
+		} else if os.Args[3] != "local" {
+			printfile(globalGroupPath, "usage")
+		}
+	}
+
+	if err := rm(base, "versions", pack); err != nil {
+		fail(err.Error())
+	}
+}
+
+func pullCmd() {
+	pack, version := os.Args[2], os.Args[3]
+	if v, err := alias(pack, version); err == nil {
+		version = v
+	}
+
+	var bin string
+	if pack == "pack" {
+		bin = join(globalGroupPath, "bin", "pull")
+	} else {
+		bin = join(globalGroupPath, "installed", pack, "bin", "pull")
+	}
+
+	if cmd(bin) != nil {
+		fail("")
+	}
+}
+
+func dropCmd() {
+	pack, version := os.Args[2], os.Args[3]
+	if v, err := alias(pack, version); err == nil {
+		version = v
+	}
+
+
+	var path string
+	if pack == "pack" {
+		path = join(globalGroupPath, "installed", version)
+	} else {
+		path = join(globalGroupPath, "installed", pack, "installed", version)
+	}
+
+	if rm(path) != nil {
+		fail("")
+	}
+}
+
+func editCmd() {
+	pack, version := os.Args[2], os.Args[3]
+	if v, err := alias(pack, version); err == nil {
+		version = v
+	}
+
+	var path string
+	if pack == "pack" {
+		path = join(globalGroupPath, "installed", version)
+	} else {
+		path = join(globalGroupPath, "installed", pack, "installed", version)
+	}
+
+	edit, ok := os.LookupEnv("EDITOR")
+	if !ok || edit == "" {
+		fail("Set EDITOR to edit config")
+	}
+
+	if cmd(edit, path) != nil {
+		fail("")
+	}
+}
+
+func authCmd() {
+	fmt.Println("auth")
+}
+
+func pushCmd() {
+	fmt.Println("push")
 }

@@ -3,17 +3,21 @@ xvm usage
 xvm help
 
 xvm init
-xvm which [<pack>]
-xvm status [local|global] [<pack>]
+xvm which   [<pack>] [local|global]
+xvm current [<pack>] [local|global]
 xvm remove
 
-xvm show <pack> [installed|available|stable|latest]
-xvm pull <pack> <version>|stable|latest
-xvm drop <pack> <version>|stable|latest
+xvm isntalled <pack>
+xvm available <pack>
+xvm stable <pack>
+xvm latest <pack>
 
-xvm set   [local|global] <pack> <version>|stable|latest
-xvm unset [local|global] <pack>
+xvm set   <pack> <version> [local|global]
+xvm unset <pack>           [local|global]
 
-xvm edit pack <pack>
-xvm auth pack <pack>
-xvm push pack <pack>
+xvm pull <pack> <version>
+xvm drop <pack> <version>
+
+xvm edit <pack> <version>
+xvm auth <pack>
+xvm push <pack>

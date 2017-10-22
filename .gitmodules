@@ -1,0 +1,6 @@
+[submodule "packs/pack"]
+	path = packs/pack
+	url = https://github.com/skotchpine/xvm-pack
+[submodule "packs/xvm-go"]
+	path = packs/xvm-go
+	url = https://github.com/skotchpine/xvm-go

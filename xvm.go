@@ -11,12 +11,12 @@ import (
 
 var (
 	globalDirPath, globalGroupPath string
-	localDirPath,  localGroupPath  string
-	pwd string
+	localDirPath, localGroupPath   string
+	pwd                            string
 
 	installedMap map[string][]string
 	availableMap map[string][]string
-	binMap     map[string]string
+	binMap       map[string]string
 
 	localMap   map[string]string
 	globalMap  map[string]string
@@ -60,7 +60,7 @@ func readline(elem ...string) (string, error) {
 
 	scanner := bufio.NewScanner(file)
 	scanner.Scan()
-	
+
 	return scanner.Text(), err
 }
 
@@ -71,7 +71,7 @@ func writeline(line string, elem ...string) error {
 	}
 	defer file.Close()
 
-	_, err = file.Write([]byte(line+"\n"))
+	_, err = file.Write([]byte(line + "\n"))
 	return err
 }
 
@@ -113,7 +113,7 @@ func alias(pack, alias string) (string, error) {
 
 // Use XVMPATH as the global group. If XVMPATH is not set, the global
 // group resolve by appending the default directory name to the user's home.
-func findGlobalGroup() (group, dir string){
+func findGlobalGroup() (group, dir string) {
 	var ok bool
 	group, ok = os.LookupEnv("XVMPATH")
 	if !ok || group == "" {
@@ -174,10 +174,15 @@ func mapGroups(done chan bool) {
 	a, b := make(chan bool), make(chan bool)
 	go mapGroup(localMap, localGroupPath, a)
 	go mapGroup(globalMap, globalGroupPath, b)
-	<-a; <-b
+	<-a
+	<-b
 
-	for k, v := range localMap  { currentMap[k] = v }
-	for k, v := range globalMap { currentMap[k] = v }
+	for k, v := range localMap {
+		currentMap[k] = v
+	}
+	for k, v := range globalMap {
+		currentMap[k] = v
+	}
 	done <- true
 }
 
@@ -262,7 +267,8 @@ func mapPacks(done chan bool) {
 		b <- true
 	}()
 
-	<-a; <-b
+	<-a
+	<-b
 	done <- true
 }
 
@@ -302,7 +308,8 @@ func init() {
 	binMap = make(map[string]string)
 	go mapPacks(b)
 
-	<-a; <-b
+	<-a
+	<-b
 }
 
 func main() {
@@ -318,25 +325,43 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "init":      argWrap(2, 2, initCmd)
-	case "which":     argWrap(2, 4, whichCmd)
-	case "current":   argWrap(2, 4, currentCmd)
-	case "remove":    argWrap(2, 2, removeCmd)
-	case "installed": argWrap(3, 3, installedCmd)
-	case "available": argWrap(3, 3, availableCmd)
-	case "stable":    argWrap(3, 3, stableCmd)
-	case "latest":    argWrap(3, 3, latestCmd)
-	case "set":       argWrap(4, 5, setCmd)
-	case "unset":     argWrap(3, 4, unsetCmd)
-	case "pull":      argWrap(4, 4, pullCmd)
-	case "drop":      argWrap(4, 4, dropCmd)
-	case "edit":      argWrap(3, 3, editCmd)
-	case "auth":      argWrap(3, 3, authCmd)
-	case "push":      argWrap(3, 3, pushCmd)
+	case "init":
+		argWrap(2, 2, initCmd)
+	case "which":
+		argWrap(2, 4, whichCmd)
+	case "current":
+		argWrap(2, 4, currentCmd)
+	case "remove":
+		argWrap(2, 2, removeCmd)
+	case "installed":
+		argWrap(3, 3, installedCmd)
+	case "available":
+		argWrap(3, 3, availableCmd)
+	case "stable":
+		argWrap(3, 3, stableCmd)
+	case "latest":
+		argWrap(3, 3, latestCmd)
+	case "set":
+		argWrap(4, 5, setCmd)
+	case "unset":
+		argWrap(3, 4, unsetCmd)
+	case "pull":
+		argWrap(4, 4, pullCmd)
+	case "drop":
+		argWrap(4, 4, dropCmd)
+	case "edit":
+		argWrap(3, 3, editCmd)
+	case "auth":
+		argWrap(3, 3, authCmd)
+	case "push":
+		argWrap(3, 3, pushCmd)
 
-	case "version":   printfile(globalGroupPath, "version")
-	case "help":      printfile(globalGroupPath, "readme")
-	default:          printfile(globalGroupPath, "usage")
+	case "version":
+		printfile(globalGroupPath, "version")
+	case "help":
+		printfile(globalGroupPath, "readme")
+	default:
+		printfile(globalGroupPath, "usage")
 	}
 }
 
@@ -407,9 +432,12 @@ func currentCmd() {
 
 	var versions map[string]string
 	switch group {
-	case "global": versions = globalMap
-	case "local":  versions = localMap
-	default:       versions = currentMap
+	case "global":
+		versions = globalMap
+	case "local":
+		versions = localMap
+	default:
+		versions = currentMap
 	}
 
 	if pack != "" {
@@ -529,7 +557,6 @@ func dropCmd() {
 		version = v
 	}
 
-
 	var path string
 	if pack == "pack" {
 		path = join(globalGroupPath, "installed", version)
@@ -570,5 +597,19 @@ func authCmd() {
 }
 
 func pushCmd() {
-	fmt.Println("push")
+	pack, version := os.Args[2], os.Args[3]
+	if v, err := alias(pack, version); err == nil {
+		version = v
+	}
+
+	var bin string
+	if pack == "pack" {
+		bin = join(globalGroupPath, "bin", "pull")
+	} else {
+		bin = join(globalGroupPath, "installed", pack, "bin", "pull")
+	}
+
+	if cmd(bin) != nil {
+		fail("")
+	}
 }

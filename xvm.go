@@ -9,6 +9,14 @@ import (
 	"path/filepath"
 )
 
+// group specification options
+const (
+	OptGlobal = "global"
+	OptLocal  = "local"
+
+	PackName = "pack"
+)
+
 var (
 	globalDirPath, globalGroupPath string
 	localDirPath, localGroupPath   string
@@ -127,7 +135,8 @@ func findGlobalGroup() (group, dir string) {
 func findLocalGroup() (group, dir string) {
 	group = globalGroupPath
 
-	pwd, err := os.Getwd()
+	var err error
+	pwd, err = os.Getwd()
 	if err != nil {
 		warn("Failed to get working directory")
 		goto returnLocalGroup
@@ -238,7 +247,7 @@ func mapPacks(done chan bool) {
 
 		packs, err := dirnames(i)
 		if err == nil {
-			availableMap["pack"] = packs
+			availableMap[PackName] = packs
 		} else {
 			warn("Failed to list available packages")
 		}
@@ -388,7 +397,7 @@ func whichCmd() {
 
 	for i := 2; i < len(os.Args); i++ {
 		switch os.Args[i] {
-		case "global", "local":
+		case OptGlobal, OptLocal:
 			group = os.Args[i]
 		default:
 			pack = os.Args[i]
@@ -396,7 +405,7 @@ func whichCmd() {
 	}
 
 	if pack == "" {
-		if group == "global" {
+		if group == OptGlobal {
 			fmt.Println(globalDirPath)
 		} else {
 			fmt.Println(localDirPath)
@@ -404,14 +413,14 @@ func whichCmd() {
 		return
 	}
 
-	if group != "global" {
+	if group != OptGlobal {
 		if _, ok = localMap[pack]; ok {
 			fmt.Println(localGroupPath)
 			return
 		}
 	}
 
-	if group != "local" {
+	if group != OptLocal {
 		if _, ok = globalMap[pack]; ok {
 			fmt.Println(globalGroupPath)
 			return
@@ -423,7 +432,7 @@ func currentCmd() {
 	var group, pack string
 	for i := 2; i < len(os.Args); i++ {
 		switch os.Args[i] {
-		case "global", "local":
+		case OptGlobal, OptLocal:
 			group = os.Args[i]
 		default:
 			pack = os.Args[i]
@@ -432,9 +441,9 @@ func currentCmd() {
 
 	var versions map[string]string
 	switch group {
-	case "global":
+	case OptGlobal:
 		versions = globalMap
-	case "local":
+	case OptLocal:
 		versions = localMap
 	default:
 		versions = currentMap
@@ -500,9 +509,9 @@ func setCmd() {
 
 	base := localGroupPath
 	if len(os.Args) == 5 {
-		if os.Args[4] == "global" {
+		if os.Args[4] == OptGlobal {
 			base = globalGroupPath
-		} else if os.Args[4] != "local" {
+		} else if os.Args[4] != OptLocal {
 			printfile(globalGroupPath, "usage")
 		}
 	}
@@ -521,9 +530,9 @@ func unsetCmd() {
 
 	base := localGroupPath
 	if len(os.Args) == 4 {
-		if os.Args[3] == "global" {
+		if os.Args[3] == OptGlobal {
 			base = globalGroupPath
-		} else if os.Args[3] != "local" {
+		} else if os.Args[3] != OptLocal {
 			printfile(globalGroupPath, "usage")
 		}
 	}
@@ -540,10 +549,10 @@ func pullCmd() {
 	}
 
 	var bin string
-	if pack == "pack" {
+	if pack == PackName {
 		bin = join(globalGroupPath, "bin", "pull")
 	} else {
-		bin = join(globalGroupPath, "installed", pack, "bin", "pull")
+		bin = join(globalGroupPath, "installed", pack, "installed", version, "bin", "pull")
 	}
 
 	if cmd(bin) != nil {
@@ -558,7 +567,7 @@ func dropCmd() {
 	}
 
 	var path string
-	if pack == "pack" {
+	if pack == PackName {
 		path = join(globalGroupPath, "installed", version)
 	} else {
 		path = join(globalGroupPath, "installed", pack, "installed", version)
@@ -576,7 +585,7 @@ func editCmd() {
 	}
 
 	var path string
-	if pack == "pack" {
+	if pack == PackName {
 		path = join(globalGroupPath, "installed", version)
 	} else {
 		path = join(globalGroupPath, "installed", pack, "installed", version)
@@ -603,10 +612,10 @@ func pushCmd() {
 	}
 
 	var bin string
-	if pack == "pack" {
+	if pack == PackName {
 		bin = join(globalGroupPath, "bin", "pull")
 	} else {
-		bin = join(globalGroupPath, "installed", pack, "bin", "pull")
+		bin = join(globalGroupPath, "installed", pack, "installed", version, "bin", "pull")
 	}
 
 	if cmd(bin) != nil {

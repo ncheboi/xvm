@@ -3,7 +3,7 @@ package pack
 import (
 	"os"
 
-	"github.com/skotchpine/xvm/util/config"
+	"github.com/skotchpine/xvm/util/keyval"
 )
 
 type Ctx struct {
@@ -16,7 +16,7 @@ func Context() (ctx *Ctx, err error) {
 
 	ctx.Path = os.Getenv("XVM_PULL_PATH")
 	ctx.Version = os.Getenv("XVM_PULL_VERSION")
-	ctx.Config, err = config.ReadString(os.Getenv("XVM_PULL_CONFIG"))
+	ctx.Config, err = keyval.ParseString(os.Getenv("XVM_PULL_CONFIG"))
 
 	return
 }

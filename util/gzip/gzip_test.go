@@ -12,7 +12,7 @@ func TestGzipGunzip(t *testing.T) {
 	expected := []byte("test")
 
 	cxBuf := bytes.NewBuffer(expected)
-	cxReader, err := gzip.Compress(cxBuf)
+	cxReader, _, err := gzip.Compress(cxBuf)
 	if err != nil {
 		t.Error(err)
 	}

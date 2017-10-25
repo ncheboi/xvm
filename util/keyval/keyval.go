@@ -1,6 +1,6 @@
 // Package config implements a minimal key-value text store
 // with parsing and a standard error.
-package config
+package keyval
 
 import (
 	"bufio"
@@ -12,22 +12,34 @@ import (
 // Config files are standardly formatted. ErrIllFormatted is used whenever
 // the standard format is not used.
 var (
-	ErrIllFormatted = errors.New("Ill-formatted config")
+	ErrIllFormatted = errors.New("Ill-formatted key-value file")
 )
 
-// Read a key-value config string. Defer to Read function.
-func ReadString(s string) (cfg map[string]string, err error) {
-	return Read(bytes.NewBufferString(s))
+// Implement io's Reader from a config. Forward errors from io operations.
+func NewReader(cfg map[string]string) (io.Reader, error) {
+	buf := new(bytes.Buffer)
+	var err error
+	for key, val := range cfg {
+		if _, err = buf.Write([]byte(key + " " + val + "\n")); err != nil {
+			break
+		}
+	}
+	return buf, err
 }
 
-// Read a key-value config buffer.
+// Read a key-value config string. Delegate to Read function.
+func ParseString(s string) (cfg map[string]string, err error) {
+	return Parse(bytes.NewBufferString(s))
+}
+
+// Parse a key-value config buffer.
 //
 // Return ErrIllFormatted if the buffer does not conform to these two rules:
-// 1) Keys are one word followed by whitespace and a value.
-// 2) Values can contain any value but a newline.
+// 1) One key per line, starting at the first character.
+// 2) Everything after the first whitespace and before the next newline is the value.
 //
 // Return error from os.Open if not nil.
-func Read(r io.Reader) (cfg map[string]string, err error) {
+func Parse(r io.Reader) (cfg map[string]string, err error) {
 	// Use bufio's Scanner and ScanLines to split the file into lines.
 	// A side-effect of this is that all \r characters will be stripped,
 	// so any \r character must be accompanied by a \n to end a line.

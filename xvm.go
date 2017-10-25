@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
@@ -14,7 +11,9 @@ const (
 	OptGlobal = "global"
 	OptLocal  = "local"
 
-	PackName = "pack"
+	PackName     = "pack"
+	PacksName    = "packs"
+	VersionsName = "versions"
 )
 
 var (
@@ -40,92 +39,17 @@ func fail(msg string, etc ...interface{}) {
 	os.Exit(1)
 }
 
-func cmd(path string, arg ...string) error {
-	c := exec.Command(path, arg...)
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	return c.Run()
-}
-
-func join(elem ...string) string {
-	return filepath.Join(elem...)
-}
-
-func dirnames(elem ...string) ([]string, error) {
-	dir, err := os.Open(join(elem...))
-	if err != nil {
-		return nil, err
-	}
-	return dir.Readdirnames(0)
-}
-
-func readline(elem ...string) (string, error) {
-	file, err := os.Open(join(elem...))
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	scanner.Scan()
-
-	return scanner.Text(), err
-}
-
-func writeline(line string, elem ...string) error {
-	file, err := os.Open(join(elem...))
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	_, err = file.Write([]byte(line + "\n"))
-	return err
-}
-
-func printfile(elem ...string) {
-	path := join(elem...)
-
-	file, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fail("Missing core file %s", path)
-		}
-		fail("")
-	}
-	defer file.Close()
-
-	if _, err := io.Copy(os.Stdout, file); err == nil {
-		os.Exit(0)
-	} else {
-		os.Exit(1)
-	}
-}
-
-func notexist(elem ...string) bool {
-	_, err := os.Stat(join(elem...))
-	return os.IsNotExist(err)
-}
-
-func mkdir(elem ...string) error {
-	return os.MkdirAll(join(elem...), 0755)
-}
-
-func rm(elem ...string) error {
-	return os.RemoveAll(join(elem...))
-}
-
-func alias(pack, alias string) (string, error) {
-	return readline(globalGroupPath, "installed", pack, "aliases", alias)
-}
-
 // Use XVMPATH as the global group. If XVMPATH is not set, the global
 // group resolve by appending the default directory name to the user's home.
 func findGlobalGroup() (group, dir string) {
 	var ok bool
 	group, ok = os.LookupEnv("XVMPATH")
 	if !ok || group == "" {
-		group = join(os.Getenv(OSHome), OSDir)
+		home, ok := os.LookupEnv(OSHome)
+		if !ok || home == "" {
+			fail("Could not resolve XVMPATH. Either set XVMPATH or %s", OSHome)
+		}
+		group = filepath.Join(home, OSDir)
 	}
 	return group, filepath.Dir(group)
 }
@@ -145,7 +69,7 @@ func findLocalGroup() (group, dir string) {
 	// Move from the current directory to the root; stop before crossing the global path.
 	for x := pwd; x != "/" && x != globalDirPath; x = filepath.Dir(x) {
 		// If a group is found (xvm directory exists), it is the local group.
-		info, err := os.Stat(join(x, OSDir))
+		info, err := os.Stat(filepath.Join(x, OSDir))
 		if err == nil && info.IsDir() {
 			group = x
 			break
@@ -156,129 +80,116 @@ returnLocalGroup:
 	return group, filepath.Dir(group)
 }
 
-func mapGroup(versions map[string]string, path string, done chan bool) {
-	packs, err := dirnames(path, "versions")
+// Add a group's versions to self and shared version maps.
+// Do not overwrite existing entries in the shared map.
+func mapGroup(self, shared map[string]string, path string, done chan bool) {
+	defer func() { done <- true }()
+
+	versions, err := ReadConfig(path)
 	if err != nil {
-		warn("Failed to list versions for %s", path)
+		warn(err.Error())
+		return
+	}
+
+	for pack, version := range versions {
+		// Write each version to this group's map.
+		self[pack] = version
+
+		// Write each version to the shared map only if no entry exists.
+		if _, ok := shared[pack]; !ok {
+			shared[pack] = version
+		}
+	}
+}
+
+// Map the versions of the local and global group. Give the local group precedence.
+func mapGroups(done chan bool) {
+	mapGroup(localMap, currentMap, localGroupPath)
+	mapGroup(globalMap, currentMap, globalGroupPath)
+	done <- true
+}
+
+// Map the installed versions of all packages.
+//
+// NOTE: this is nearly an O(n^3) implementation. There must be a less runtime-
+//       intensive way to keep this available.
+func mapInstalled(done chan bool) {
+	defer func() { done <- true }()
+
+	i := join(globalGroupPath, "installed")
+
+	packs, err := dirnames(i)
+	if err != nil {
+		warn("Failed to search installed packages")
+		a <- true
 		return
 	}
 
 	for _, pack := range packs {
-		if _, ok := versions[pack]; ok {
+		j := join(i, pack, "installed")
+
+		versions, err := dirnames(j)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				warn("Failed to list versions for %s", pack)
+			}
 			continue
 		}
+		installedMap[pack] = versions
 
-		version, err := readline(path, "versions", pack)
-		if err == nil {
-			versions[pack] = version
-		} else {
-			warn("Failed to get version of %s for %s", pack, path)
-		}
-	}
+		for _, version := range versions {
+			k := join(j, version, "bin")
 
-	done <- true
-}
-
-func mapGroups(done chan bool) {
-	a, b := make(chan bool), make(chan bool)
-	go mapGroup(localMap, localGroupPath, a)
-	go mapGroup(globalMap, globalGroupPath, b)
-	<-a
-	<-b
-
-	for k, v := range localMap {
-		currentMap[k] = v
-	}
-	for k, v := range globalMap {
-		currentMap[k] = v
-	}
-	done <- true
-}
-
-func mapPacks(done chan bool) {
-	a, b := make(chan bool), make(chan bool)
-
-	go func() {
-		i := join(globalGroupPath, "installed")
-
-		packs, err := dirnames(i)
-		if err != nil {
-			warn("Failed to search installed packages")
-			a <- true
-			return
-		}
-
-		for _, pack := range packs {
-			j := join(i, pack, "installed")
-
-			versions, err := dirnames(j)
+			bins, err := dirnames(k)
 			if err != nil {
 				if !os.IsNotExist(err) {
-					warn("Failed to list versions for %s", pack)
+					warn("Failed to list binaires for version %s of %s", version, pack)
 				}
 				continue
 			}
-			installedMap[pack] = versions
 
-			for _, version := range versions {
-				k := join(j, version, "bin")
-
-				bins, err := dirnames(k)
-				if err != nil {
-					if !os.IsNotExist(err) {
-						warn("Failed to list binaires for version %s of %s", version, pack)
-					}
-					continue
-				}
-
-				for _, bin := range bins {
-					if _, ok := binMap[bin]; !ok {
-						binMap[bin] = pack
-					}
+			for _, bin := range bins {
+				if _, ok := binMap[bin]; !ok {
+					binMap[bin] = pack
 				}
 			}
 		}
+	}
+}
 
-		a <- true
-	}()
+// Map the available versions of all packages
+func mapAvailable(done chan bool) {
+	defer func() { done <- true }()
 
-	go func() {
-		i := join(globalGroupPath, "available")
+	i := join(globalGroupPath, "available")
 
-		packs, err := dirnames(i)
-		if err == nil {
-			availableMap[PackName] = packs
-		} else {
-			warn("Failed to list available packages")
-		}
+	packs, err := dirnames(i)
+	if err == nil {
+		availableMap[PackName] = packs
+	} else {
+		warn("Failed to list available packages")
+	}
 
-		i = join(globalGroupPath, "installed")
+	i = join(globalGroupPath, "installed")
 
-		packs, err = dirnames(i)
-		if err != nil {
-			warn("Failed to search installed packages")
-			b <- true
-		}
-
-		for _, pack := range packs {
-			j := join(i, pack, "available")
-
-			versions, err := dirnames(j)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					warn("Failed to list available versions for %s", pack)
-				}
-				continue
-			}
-			availableMap[pack] = versions
-		}
-
+	packs, err = dirnames(i)
+	if err != nil {
+		warn("Failed to search installed packages")
 		b <- true
-	}()
+	}
 
-	<-a
-	<-b
-	done <- true
+	for _, pack := range packs {
+		j := join(i, pack, "available")
+
+		versions, err := dirnames(j)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				warn("Failed to list available versions for %s", pack)
+			}
+			continue
+		}
+		availableMap[pack] = versions
+	}
 }
 
 func wrapBinary(bin string) {
@@ -305,20 +216,23 @@ func init() {
 	globalGroupPath, globalDirPath = findGlobalGroup()
 	localGroupPath, localDirPath = findLocalGroup()
 
-	a, b := make(chan bool), make(chan bool)
+	done := make(chan bool)
 
 	localMap = make(map[string]string)
 	globalMap = make(map[string]string)
 	currentMap = make(map[string]string)
-	go mapGroups(a)
+	go mapGroups(done)
 
 	availableMap = make(map[string][]string)
+	go mapAvailable(done)
+
 	installedMap = make(map[string][]string)
 	binMap = make(map[string]string)
-	go mapPacks(b)
+	go mapInstalled(done)
 
-	<-a
-	<-b
+	for i = 0; i < 3; i++ {
+		<-done
+	}
 }
 
 func main() {

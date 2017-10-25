@@ -1,11 +1,11 @@
-package config_test
+package keyval_test
 
 import (
 	"bytes"
 	"io"
 	"testing"
 
-	"github.com/skotchpine/xvm/util/config"
+	"github.com/skotchpine/xvm/util/keyval"
 )
 
 var (
@@ -32,17 +32,42 @@ func init() {
 	}
 }
 
-func TestRead(t *testing.T) {
-	if _, err := config.ReadString("hi"); err != config.ErrIllFormatted {
+func TestNewReader(t *testing.T) {
+	reader, err := keyval.NewReader(expecteds)
+	if err != nil {
+		t.Error(err)
+	}
+
+	actuals, err := keyval.Parse(reader)
+	if err != nil {
+		t.Error(err)
+	}
+
+	for key, expected := range expecteds {
+		actual, ok := actuals[key]
+		if !ok {
+			t.Errorf("Key '%s' not parsed", key)
+		}
+		if expected != actual {
+			t.Errorf(
+				"Expected key '%s' to be '%s', but got '%s'",
+				key, expected, actual,
+			)
+		}
+	}
+}
+
+func TestParse(t *testing.T) {
+	if _, err := keyval.ParseString("hi"); err != keyval.ErrIllFormatted {
 		t.Error("An empty key did not cause ErrIllFormatted")
 	}
 
-	if _, err := config.ReadString("hi"); err != config.ErrIllFormatted {
+	if _, err := keyval.ParseString("hi"); err != keyval.ErrIllFormatted {
 		t.Error("A key without a value did not cause ErrIllFormatted")
 	}
 
 	for _, input := range inputs {
-		actuals, err := config.Read(input)
+		actuals, err := keyval.Parse(input)
 		if err != nil {
 			t.Error(err)
 		}

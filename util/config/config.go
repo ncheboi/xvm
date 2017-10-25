@@ -4,8 +4,9 @@ package config
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
-	"os"
+	"io"
 )
 
 // Config files are standardly formatted. ErrIllFormatted is used whenever
@@ -14,25 +15,24 @@ var (
 	ErrIllFormatted = errors.New("Ill-formatted config")
 )
 
-// Parse a key-value config file.
+// Read a key-value config string. Defer to Read function.
+func ReadString(s string) (cfg map[string]string, err error) {
+	return Read(bytes.NewBufferString(s))
+}
+
+// Read a key-value config buffer.
 //
-// Return ErrIllFormatted if the file does not conform to these two rules:
+// Return ErrIllFormatted if the buffer does not conform to these two rules:
 // 1) Keys are one word followed by whitespace and a value.
 // 2) Values can contain any value but a newline.
 //
 // Return error from os.Open if not nil.
-func Parse(path string) (cfg map[string]string, err error) {
-	var file *os.File
-	if file, err = os.Open(path); err != nil {
-		return
-	}
-	defer file.Close()
-
+func Read(r io.Reader) (cfg map[string]string, err error) {
 	// Use bufio's Scanner and ScanLines to split the file into lines.
 	// A side-effect of this is that all \r characters will be stripped,
-	// and of \n, \r\n and \r, only \n and \r\n will work.
+	// so any \r character must be accompanied by a \n to end a line.
 	cfg = make(map[string]string)
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 

@@ -1,11 +1,11 @@
 package config_test
 
 import (
-	"io/ioutil"
-	"os"
+	"bytes"
+	"io"
 	"testing"
 
-	"."
+	"github.com/skotchpine/xvm/util/config"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 	lineDelims   = []string{"\n", "\r\n"}
 	keyValDelims = []string{"\t", " ", "    "}
 
-	inputs [][]byte
+	inputs []io.Reader
 )
 
 func init() {
@@ -28,34 +28,21 @@ func init() {
 				input = append(input, (key + keyValDelim + val + lineDelim)...)
 			}
 		}
-		inputs = append(inputs, input)
+		inputs = append(inputs, bytes.NewBuffer(input))
 	}
 }
 
-func TestParse(t *testing.T) {
-	configPath := "xvm-test-config"
-
-	os.RemoveAll(configPath)
-	defer os.RemoveAll(configPath)
-
-	if _, err := config.Parse(configPath); err == nil {
-		t.Error("The path of a nonexistent file did not cause error")
-	}
-
-	ioutil.WriteFile(configPath, []byte("hi"), 0777)
-	if _, err := config.Parse(configPath); err != config.ErrIllFormatted {
-		t.Error("A key without a value did not cause ErrIllFormatted")
-	}
-
-	ioutil.WriteFile(configPath, []byte(" hi"), 0777)
-	if _, err := config.Parse(configPath); err != config.ErrIllFormatted {
+func TestRead(t *testing.T) {
+	if _, err := config.ReadString("hi"); err != config.ErrIllFormatted {
 		t.Error("An empty key did not cause ErrIllFormatted")
 	}
 
-	for _, input := range inputs {
-		ioutil.WriteFile(configPath, input, 0777)
+	if _, err := config.ReadString("hi"); err != config.ErrIllFormatted {
+		t.Error("A key without a value did not cause ErrIllFormatted")
+	}
 
-		actuals, err := config.Parse(configPath)
+	for _, input := range inputs {
+		actuals, err := config.Read(input)
 		if err != nil {
 			t.Error(err)
 		}

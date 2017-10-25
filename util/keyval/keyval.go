@@ -5,26 +5,37 @@ package keyval
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"io"
 )
 
-// Config files are standardly formatted. ErrIllFormatted is used whenever
-// the standard format is not used.
-var (
-	ErrIllFormatted = errors.New("Ill-formatted key-value file")
+// All files will be ended with \n and all key-val pairs will be separated by
+// one space by default.
+const (
+	LineDelim   = "\n"
+	KeyValDelim = " "
 )
 
 // Implement io's Reader from a config. Forward errors from io operations.
 func NewReader(cfg map[string]string) (io.Reader, error) {
 	buf := new(bytes.Buffer)
-	var err error
 	for key, val := range cfg {
-		if _, err = buf.Write([]byte(key + " " + val + "\n")); err != nil {
-			break
+		if err := writeLine(key, val, buf); err != nil {
+			return buf, err
 		}
 	}
-	return buf, err
+	return buf, nil
+}
+
+// Write one key-val pair to a buffer.
+func writeLine(key, val string, buf io.Writer) (err error) {
+	var line []byte
+	if val == "" {
+		line = []byte(key + LineDelim)
+	} else {
+		line = []byte(key + KeyValDelim + val + LineDelim)
+	}
+	_, err = buf.Write(line)
+	return
 }
 
 // Read a key-value config string. Delegate to Read function.
@@ -32,13 +43,7 @@ func ParseString(s string) (cfg map[string]string, err error) {
 	return Parse(bytes.NewBufferString(s))
 }
 
-// Parse a key-value config buffer.
-//
-// Return ErrIllFormatted if the buffer does not conform to these two rules:
-// 1) One key per line, starting at the first character.
-// 2) Everything after the first whitespace and before the next newline is the value.
-//
-// Return error from os.Open if not nil.
+// Parse a key-value config buffer. Forward errors from os.Open if not nil.
 func Parse(r io.Reader) (cfg map[string]string, err error) {
 	// Use bufio's Scanner and ScanLines to split the file into lines.
 	// A side-effect of this is that all \r characters will be stripped,
@@ -46,37 +51,30 @@ func Parse(r io.Reader) (cfg map[string]string, err error) {
 	cfg = make(map[string]string)
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := scanner.Bytes()
-
-		// If the first character is a whitespace, the key is empty.
-		if line[0] == ' ' || line[0] == '\t' {
-			err = ErrIllFormatted
-			return
-		}
-
-		// Identify the limits of the first whitespace string
-		// anywhere but the first character.
-		start, stop := 0, 0
-		for i, b := range line {
-			if b == ' ' || b == '\t' {
-				if i != 0 && start == 0 {
-					start = i
-				}
-			} else {
-				if start != 0 {
-					stop = i
-					break
-				}
-			}
-		}
-
-		// Slice the key and value out of line, using the whitespace as the delimiter.
-		// If either bound of the whitespace was not found, the file is Ill-formatted.
-		if start != 0 && stop != 0 {
-			cfg[string(line[:start])] = string(line[stop:])
-		} else {
-			err = ErrIllFormatted
-		}
+		key, val := parseLine(scanner.Bytes())
+		cfg[key] = val
 	}
 	return
+}
+
+func parseLine(buf []byte) (string, string) {
+	n := len(buf) - 1
+	lead := 0
+	for lead < n && buf[lead] == ' ' || buf[lead] == '\t' {
+		lead++
+	}
+	cursor := lead
+
+	for cursor < n && buf[cursor] != ' ' && buf[cursor] != '\t' {
+		cursor++
+	}
+	if cursor == n {
+		return string(buf[lead : cursor+1]), ""
+	}
+	key := string(buf[lead:cursor])
+
+	for cursor < n && buf[cursor] == ' ' || buf[cursor] == '\t' {
+		cursor++
+	}
+	return key, string(buf[cursor:])
 }

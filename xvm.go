@@ -4,16 +4,52 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/skotchpine/xvm/util"
 )
 
 // group specification options
 const (
-	OptGlobal = "global"
-	OptLocal  = "local"
+	Version = "0.0.2"
 
-	PackName     = "pack"
-	PacksName    = "packs"
-	VersionsName = "versions"
+	Usage = `
+xvm version
+xvm usage
+xvm help
+
+xvm init
+xvm which  [<pack>] [local|global]
+xvm status [<pack>] [local|global]
+xvm remove
+
+xvm installed <pack>
+xvm available <pack>
+xvm stable    <pack>
+xvm latest    <pack>
+
+xvm set   <pack> <version> [local|global]
+xvm unset <pack>           [local|global]
+
+xvm pull <pack> <version>
+xvm push <pack> <version>
+xvm drop <pack> <version>
+
+xvm config <pack> <version>
+
+xvm alias   <pack> <version> <name>
+xvm unalias <pack> <name>`
+
+	StrGlobal = "global"
+	StrLocal  = "local"
+
+	StrPack      = "pack"
+	StrPacks     = "packs"
+	StrVersions  = "versions"
+	StrInstalled = "installed"
+	StrAvailable = "available"
+	StrAliases   = "aliases"
+	StrBin       = "bin"
+	StrSplat     = "*"
 )
 
 var (
@@ -24,6 +60,7 @@ var (
 	installedMap map[string][]string
 	availableMap map[string][]string
 	binMap       map[string]string
+	aliasesMap   map[string]map[string]string
 
 	localMap   map[string]string
 	globalMap  map[string]string
@@ -41,7 +78,7 @@ func fail(msg string, etc ...interface{}) {
 
 // Use XVMPATH as the global group. If XVMPATH is not set, the global
 // group resolve by appending the default directory name to the user's home.
-func findGlobalGroup() (group, dir string) {
+func FindGlobalGroup() (group, dir string) {
 	var ok bool
 	group, ok = os.LookupEnv("XVMPATH")
 	if !ok || group == "" {
@@ -56,7 +93,7 @@ func findGlobalGroup() (group, dir string) {
 
 // Set the nearest group. If none exist between the working directory
 // and the root, use the global group.
-func findLocalGroup() (group, dir string) {
+func FindLocalGroup() (group, dir string) {
 	group = globalGroupPath
 
 	var err error
@@ -82,10 +119,8 @@ returnLocalGroup:
 
 // Add a group's versions to self and shared version maps.
 // Do not overwrite existing entries in the shared map.
-func mapGroup(self, shared map[string]string, path string, done chan bool) {
-	defer func() { done <- true }()
-
-	versions, err := ReadConfig(path)
+func MapGroup(self, shared map[string]string, groupPath string) {
+	versions, err := util.ReadMap(filepath.Join(groupPath, StrVersions))
 	if err != nil {
 		warn(err.Error())
 		return
@@ -103,96 +138,108 @@ func mapGroup(self, shared map[string]string, path string, done chan bool) {
 }
 
 // Map the versions of the local and global group. Give the local group precedence.
-func mapGroups(done chan bool) {
-	mapGroup(localMap, currentMap, localGroupPath)
-	mapGroup(globalMap, currentMap, globalGroupPath)
+func MapGroups(done chan bool) {
+	MapGroup(localMap, currentMap, localGroupPath)
+	MapGroup(globalMap, currentMap, globalGroupPath)
 	done <- true
 }
 
 // Map the installed versions of all packages.
-//
-// NOTE: this is nearly an O(n^3) implementation. There must be a less runtime-
-//       intensive way to keep this available.
-func mapInstalled(done chan bool) {
+func MapInstalled(done chan bool) {
 	defer func() { done <- true }()
 
-	i := join(globalGroupPath, "installed")
-
-	packs, err := dirnames(i)
+	glob := filepath.Join(globalGroupPath, StrPacks, StrSplat, StrInstalled, StrSplat)
+	list, err := filepath.Glob(glob)
 	if err != nil {
-		warn("Failed to search installed packages")
-		a <- true
+		warn("Can not find installed versions")
 		return
 	}
 
-	for _, pack := range packs {
-		j := join(i, pack, "installed")
-
-		versions, err := dirnames(j)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				warn("Failed to list versions for %s", pack)
-			}
-			continue
-		}
-		installedMap[pack] = versions
-
-		for _, version := range versions {
-			k := join(j, version, "bin")
-
-			bins, err := dirnames(k)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					warn("Failed to list binaires for version %s of %s", version, pack)
-				}
-				continue
-			}
-
-			for _, bin := range bins {
-				if _, ok := binMap[bin]; !ok {
-					binMap[bin] = pack
-				}
-			}
-		}
+	for _, path := range list {
+		version := filepath.Base(path)
+		pack := filepath.Base(filepath.Dir(filepath.Dir(path)))
+		installedMap[pack] = append(installedMap[pack], version)
 	}
 }
 
-// Map the available versions of all packages
-func mapAvailable(done chan bool) {
+// Map the executables for installed versions of all packages.
+func MapBin(done chan bool) {
 	defer func() { done <- true }()
 
-	i := join(globalGroupPath, "available")
-
-	packs, err := dirnames(i)
-	if err == nil {
-		availableMap[PackName] = packs
-	} else {
-		warn("Failed to list available packages")
-	}
-
-	i = join(globalGroupPath, "installed")
-
-	packs, err = dirnames(i)
+	glob := filepath.Join(globalGroupPath, StrPacks, StrSplat, StrInstalled, StrSplat, StrBin, StrSplat)
+	list, err := filepath.Glob(glob)
 	if err != nil {
-		warn("Failed to search installed packages")
-		b <- true
+		warn("Can not find executable versions")
+		return
 	}
 
-	for _, pack := range packs {
-		j := join(i, pack, "available")
-
-		versions, err := dirnames(j)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				warn("Failed to list available versions for %s", pack)
-			}
-			continue
-		}
-		availableMap[pack] = versions
+	for _, path := range list {
+		dir := filepath.Dir
+		pack := filepath.Base(dir(dir(dir(dir(path)))))
+		binMap[pack] = path
 	}
 }
 
-func wrapBinary(bin string) {
+// Map the available versions of all packages.
+func MapAvailable(done chan bool) {
+	defer func() { done <- true }()
+
+	glob := filepath.Join(globalGroupPath, StrPacks, StrSplat, StrAvailable)
+	list, err := filepath.Glob(glob)
+	if err != nil {
+		warn("Can not find available versions")
+		return
+	}
+
+	for _, path := range list {
+		pack := filepath.Base(filepath.Dir(path))
+
+		versions, err := util.ReadMap(path)
+		if err != nil {
+			warn("Can not find available versions for %s", pack)
+			break
+		}
+
+		for version := range versions {
+			availableMap[pack] = append(availableMap[pack], version)
+		}
+	}
+}
+
+// Map the aliases for all packages.
+func MapAliases(done chan bool) {
+	defer func() { done <- true }()
+
+	glob := filepath.Join(globalGroupPath, StrPacks, StrSplat, StrAliases)
+	list, err := filepath.Glob(glob)
+	if err != nil {
+		warn("Can not find aliases")
+		return
+	}
+
+	for _, path := range list {
+		pack := filepath.Base(filepath.Dir(path))
+
+		aliases, err := util.ReadMap(path)
+		if err != nil {
+			warn("Can not find aliases for %s", pack)
+			break
+		}
+
+		aliasesMap[pack] = aliases
+	}
+}
+
+func ResolveAlias(pack, alias string) (concrete string) {
+	if aliases, ok := aliasesMap[pack]; ok {
+		if concrete, ok := aliases[alias]; ok {
+			return concrete
+		}
+	}
+	return alias
+}
+
+func WrapBin(bin string) {
 	var pack, version string
 	var ok bool
 
@@ -203,34 +250,39 @@ func wrapBinary(bin string) {
 		fail("No version set for package %s", pack)
 	}
 
-	path := join(globalGroupPath, "installed", pack, "installed", version, "bin", bin)
-	if notexist(path) {
+	path := filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, bin)
+	if util.NotExist(path) {
 		fail("No executable %s for version %s of %s", bin, version, pack)
 	}
-	if cmd(path) != nil {
+	if util.Cmd(path) != nil {
 		fail("")
 	}
 }
 
 func init() {
-	globalGroupPath, globalDirPath = findGlobalGroup()
-	localGroupPath, localDirPath = findLocalGroup()
+	globalGroupPath, globalDirPath = FindGlobalGroup()
+	localGroupPath, localDirPath = FindLocalGroup()
 
 	done := make(chan bool)
 
 	localMap = make(map[string]string)
 	globalMap = make(map[string]string)
 	currentMap = make(map[string]string)
-	go mapGroups(done)
+	go MapGroups(done)
 
 	availableMap = make(map[string][]string)
-	go mapAvailable(done)
+	go MapAvailable(done)
 
 	installedMap = make(map[string][]string)
-	binMap = make(map[string]string)
-	go mapInstalled(done)
+	go MapInstalled(done)
 
-	for i = 0; i < 3; i++ {
+	binMap = make(map[string]string)
+	go MapBin(done)
+
+	aliasesMap = make(map[string]map[string]string)
+	go MapAliases(done)
+
+	for i := 0; i < 4; i++ {
 		<-done
 	}
 }
@@ -240,14 +292,16 @@ func main() {
 	// find a relevant binary and execute it
 	name := filepath.Base(os.Args[0])
 	if name != "xvm"+OSExt {
-		wrapBinary(name)
+		WrapBin(name)
 	}
 
 	if len(os.Args) < 2 {
-		printfile(globalGroupPath, "usage")
+		os.Args = append(os.Args, "usage")
 	}
 
 	switch os.Args[1] {
+	case "version":
+		fmt.Println(Version)
 	case "init":
 		argWrap(2, 2, initCmd)
 	case "which":
@@ -278,29 +332,26 @@ func main() {
 		argWrap(3, 3, authCmd)
 	case "push":
 		argWrap(3, 3, pushCmd)
-
-	case "version":
-		printfile(globalGroupPath, "version")
-	case "help":
-		printfile(globalGroupPath, "readme")
 	default:
-		printfile(globalGroupPath, "usage")
+		fmt.Println(Usage)
 	}
 }
 
 func argWrap(min, max int, fn func()) {
 	n := len(os.Args)
 	if (min > 0 && n < min) || (max > 0 && n > max) {
-		printfile(globalGroupPath, "usage")
+		fmt.Println(Usage)
+	} else {
+		fn()
 	}
-	fn()
 }
 
 func initCmd() {
 	if localGroupPath == pwd {
 		fail("Group already exists")
 	}
-	if mkdir(pwd, OSDir, "versions") != nil {
+	path := filepath.Join(pwd, OSDir, StrVersions)
+	if err := os.MkdirAll(path, util.PermPublic); err != nil {
 		fail("")
 	}
 }
@@ -311,7 +362,7 @@ func whichCmd() {
 
 	for i := 2; i < len(os.Args); i++ {
 		switch os.Args[i] {
-		case OptGlobal, OptLocal:
+		case StrGlobal, StrLocal:
 			group = os.Args[i]
 		default:
 			pack = os.Args[i]
@@ -319,7 +370,7 @@ func whichCmd() {
 	}
 
 	if pack == "" {
-		if group == OptGlobal {
+		if group == StrGlobal {
 			fmt.Println(globalDirPath)
 		} else {
 			fmt.Println(localDirPath)
@@ -327,14 +378,14 @@ func whichCmd() {
 		return
 	}
 
-	if group != OptGlobal {
+	if group != StrGlobal {
 		if _, ok = localMap[pack]; ok {
 			fmt.Println(localGroupPath)
 			return
 		}
 	}
 
-	if group != OptLocal {
+	if group != StrLocal {
 		if _, ok = globalMap[pack]; ok {
 			fmt.Println(globalGroupPath)
 			return
@@ -346,7 +397,7 @@ func currentCmd() {
 	var group, pack string
 	for i := 2; i < len(os.Args); i++ {
 		switch os.Args[i] {
-		case OptGlobal, OptLocal:
+		case StrGlobal, StrLocal:
 			group = os.Args[i]
 		default:
 			pack = os.Args[i]
@@ -355,9 +406,9 @@ func currentCmd() {
 
 	var versions map[string]string
 	switch group {
-	case OptGlobal:
+	case StrGlobal:
 		versions = globalMap
-	case OptLocal:
+	case StrLocal:
 		versions = localMap
 	default:
 		versions = currentMap
@@ -382,7 +433,7 @@ func removeCmd() {
 	if localGroupPath != pwd {
 		fail("Group does not exist")
 	}
-	if err := rm(pwd, OSDir); err != nil {
+	if err := os.RemoveAll(filepath.Join(pwd, OSDir)); err != nil {
 		fail(err.Error())
 	}
 }
@@ -401,40 +452,42 @@ func availableCmd() {
 			fmt.Println(version)
 		}
 	}
+	if aliases, ok := aliasesMap[os.Args[2]]; ok {
+		for alias := range aliases {
+			fmt.Println(alias)
+		}
+	}
 }
 
 func stableCmd() {
-	if version, err := alias(os.Args[2], "stable"); err == nil {
-		fmt.Println(version)
-	}
+	fmt.Println(ResolveAlias(os.Args[2], "stable"))
 }
 
 func latestCmd() {
-	if version, err := alias(os.Args[2], "latest"); err == nil {
-		fmt.Println(version)
-	}
+	fmt.Println(ResolveAlias(os.Args[2], "latest"))
 }
 
 func setCmd() {
-	pack, version := os.Args[2], os.Args[3]
-	if v, err := alias(pack, version); err == nil {
-		version = v
-	}
+	pack := os.Args[2]
+	version := ResolveAlias(pack, os.Args[3])
 
 	base := localGroupPath
 	if len(os.Args) == 5 {
-		if os.Args[4] == OptGlobal {
+		if os.Args[4] == StrGlobal {
 			base = globalGroupPath
-		} else if os.Args[4] != OptLocal {
-			printfile(globalGroupPath, "usage")
+		} else if os.Args[4] != StrLocal {
+			fmt.Println(Usage)
+			os.Exit(1)
 		}
 	}
 
 	if _, ok := installedMap[pack]; !ok {
 		fail("Version %s of %s is not installed")
 	}
+	currentMap[pack] = version
 
-	if writeline(version, base, "versions", pack) != nil {
+	path := filepath.Join(base, StrVersions)
+	if err := util.WriteMap(path, currentMap); err != nil {
 		fail("Failed to save version")
 	}
 }
@@ -444,65 +497,60 @@ func unsetCmd() {
 
 	base := localGroupPath
 	if len(os.Args) == 4 {
-		if os.Args[3] == OptGlobal {
+		if os.Args[3] == StrGlobal {
 			base = globalGroupPath
-		} else if os.Args[3] != OptLocal {
-			printfile(globalGroupPath, "usage")
+		} else if os.Args[3] != StrLocal {
+			fmt.Println(Usage)
+			os.Exit(1)
 		}
 	}
 
-	if err := rm(base, "versions", pack); err != nil {
+	if err := os.RemoveAll(filepath.Join(base, "versions", pack)); err != nil {
 		fail(err.Error())
 	}
 }
 
 func pullCmd() {
-	pack, version := os.Args[2], os.Args[3]
-	if v, err := alias(pack, version); err == nil {
-		version = v
-	}
+	pack := os.Args[2]
+	version := ResolveAlias(pack, os.Args[3])
 
 	var bin string
-	if pack == PackName {
-		bin = join(globalGroupPath, "bin", "pull")
+	if pack == StrPack {
+		bin = filepath.Join(globalGroupPath, StrBin, "pull")
 	} else {
-		bin = join(globalGroupPath, "installed", pack, "installed", version, "bin", "pull")
+		bin = filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, "pull")
 	}
 
-	if cmd(bin) != nil {
-		fail("")
+	if err := util.Cmd(bin); err != nil {
+		fail(err.Error())
 	}
 }
 
 func dropCmd() {
-	pack, version := os.Args[2], os.Args[3]
-	if v, err := alias(pack, version); err == nil {
-		version = v
-	}
+	pack := os.Args[2]
+	version := ResolveAlias(pack, os.Args[3])
 
 	var path string
-	if pack == PackName {
-		path = join(globalGroupPath, "installed", version)
+	if pack == StrPack {
+		path = filepath.Join(globalGroupPath, StrPacks, version)
 	} else {
-		path = join(globalGroupPath, "installed", pack, "installed", version)
+		path = filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version)
 	}
 
-	if rm(path) != nil {
-		fail("")
+	if err := os.RemoveAll(path); err != nil {
+		fail(err.Error())
 	}
 }
 
 func editCmd() {
-	pack, version := os.Args[2], os.Args[3]
-	if v, err := alias(pack, version); err == nil {
-		version = v
-	}
+	pack := os.Args[2]
+	version := ResolveAlias(pack, os.Args[3])
 
 	var path string
-	if pack == PackName {
-		path = join(globalGroupPath, "installed", version)
+	if pack == StrPack {
+		path = filepath.Join(globalGroupPath, StrPacks, version)
 	} else {
-		path = join(globalGroupPath, "installed", pack, "installed", version)
+		path = filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version)
 	}
 
 	edit, ok := os.LookupEnv("EDITOR")
@@ -510,8 +558,8 @@ func editCmd() {
 		fail("Set EDITOR to edit config")
 	}
 
-	if cmd(edit, path) != nil {
-		fail("")
+	if err := util.Cmd(edit, path); err != nil {
+		fail(err.Error())
 	}
 }
 
@@ -520,19 +568,17 @@ func authCmd() {
 }
 
 func pushCmd() {
-	pack, version := os.Args[2], os.Args[3]
-	if v, err := alias(pack, version); err == nil {
-		version = v
-	}
+	pack := os.Args[2]
+	version := ResolveAlias(pack, os.Args[3])
 
 	var bin string
-	if pack == PackName {
-		bin = join(globalGroupPath, "bin", "pull")
+	if pack == StrPack {
+		bin = filepath.Join(globalGroupPath, StrBin, "pull")
 	} else {
-		bin = join(globalGroupPath, "installed", pack, "installed", version, "bin", "pull")
+		bin = filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, "pull")
 	}
 
-	if cmd(bin) != nil {
-		fail("")
+	if err := util.Cmd(bin); err != nil {
+		fail(err.Error())
 	}
 }

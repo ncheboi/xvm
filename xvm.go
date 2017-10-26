@@ -53,9 +53,9 @@ xvm unalias <pack> <name>`
 )
 
 var (
-	globalDirPath, globalGroupPath string
-	localDirPath, localGroupPath   string
-	pwd                            string
+	GlobalDirPath, GlobalGroupPath string
+	LocalDirPath, LocalGroupPath   string
+	PWD                            string
 
 	installedMap map[string][]string
 	availableMap map[string][]string
@@ -76,8 +76,8 @@ func fail(msg string, etc ...interface{}) {
 	os.Exit(1)
 }
 
-// Use XVMPATH as the global group. If XVMPATH is not set, the global
-// group resolve by appending the default directory name to the user's home.
+// FindGlobalGroup uses XVMPATH as the global group. If XVMPATH is not set,
+// resolve the global group by appending the default name to the user's home.
 func FindGlobalGroup() (group, dir string) {
 	var ok bool
 	group, ok = os.LookupEnv("XVMPATH")
@@ -91,24 +91,24 @@ func FindGlobalGroup() (group, dir string) {
 	return group, filepath.Dir(group)
 }
 
-// Set the nearest group. If none exist between the working directory
-// and the root, use the global group.
+// FindLocalGroup sets the nearest group. If none exist between the
+// working directory and the root, use the global group.
 func FindLocalGroup() (group, dir string) {
-	group = globalGroupPath
+	group = GlobalGroupPath
 
 	var err error
-	pwd, err = os.Getwd()
+	PWD, err = os.Getwd()
 	if err != nil {
 		warn("Failed to get working directory")
 		goto returnLocalGroup
 	}
 
 	// Move from the current directory to the root; stop before crossing the global path.
-	for x := pwd; x != "/" && x != globalDirPath; x = filepath.Dir(x) {
+	for x := PWD; x != "/" && x != GlobalDirPath; x = filepath.Dir(x) {
 		// If a group is found (xvm directory exists), it is the local group.
 		info, err := os.Stat(filepath.Join(x, OSDir))
 		if err == nil && info.IsDir() {
-			group = x
+			group = filepath.Join(x, OSDir)
 			break
 		}
 	}
@@ -117,7 +117,7 @@ returnLocalGroup:
 	return group, filepath.Dir(group)
 }
 
-// Add a group's versions to self and shared version maps.
+// MapGroup adds a group's versions to self and shared version maps.
 // Do not overwrite existing entries in the shared map.
 func MapGroup(self, shared map[string]string, groupPath string) {
 	versions, err := util.ReadMap(filepath.Join(groupPath, StrVersions))
@@ -137,18 +137,19 @@ func MapGroup(self, shared map[string]string, groupPath string) {
 	}
 }
 
-// Map the versions of the local and global group. Give the local group precedence.
+// MapGroups maps the versions of the local and global group.
+// Give the local group precedence.
 func MapGroups(done chan bool) {
-	MapGroup(localMap, currentMap, localGroupPath)
-	MapGroup(globalMap, currentMap, globalGroupPath)
+	MapGroup(localMap, currentMap, LocalGroupPath)
+	MapGroup(globalMap, currentMap, GlobalGroupPath)
 	done <- true
 }
 
-// Map the installed versions of all packages.
+// MapInstalled maps the installed versions of all packages.
 func MapInstalled(done chan bool) {
 	defer func() { done <- true }()
 
-	glob := filepath.Join(globalGroupPath, StrPacks, StrSplat, StrInstalled, StrSplat)
+	glob := filepath.Join(GlobalGroupPath, StrPacks, StrSplat, StrInstalled, StrSplat)
 	list, err := filepath.Glob(glob)
 	if err != nil {
 		warn("Can not find installed versions")
@@ -162,11 +163,11 @@ func MapInstalled(done chan bool) {
 	}
 }
 
-// Map the executables for installed versions of all packages.
+// MapBin maps the executables for installed versions of all packages.
 func MapBin(done chan bool) {
 	defer func() { done <- true }()
 
-	glob := filepath.Join(globalGroupPath, StrPacks, StrSplat, StrInstalled, StrSplat, StrBin, StrSplat)
+	glob := filepath.Join(GlobalGroupPath, StrPacks, StrSplat, StrInstalled, StrSplat, StrBin, StrSplat)
 	list, err := filepath.Glob(glob)
 	if err != nil {
 		warn("Can not find executable versions")
@@ -180,11 +181,11 @@ func MapBin(done chan bool) {
 	}
 }
 
-// Map the available versions of all packages.
+// MapAvailable maps the available versions of all packages.
 func MapAvailable(done chan bool) {
 	defer func() { done <- true }()
 
-	glob := filepath.Join(globalGroupPath, StrPacks, StrSplat, StrAvailable)
+	glob := filepath.Join(GlobalGroupPath, StrPacks, StrSplat, StrAvailable)
 	list, err := filepath.Glob(glob)
 	if err != nil {
 		warn("Can not find available versions")
@@ -206,11 +207,11 @@ func MapAvailable(done chan bool) {
 	}
 }
 
-// Map the aliases for all packages.
+// MapAliases maps the aliases for all packages.
 func MapAliases(done chan bool) {
 	defer func() { done <- true }()
 
-	glob := filepath.Join(globalGroupPath, StrPacks, StrSplat, StrAliases)
+	glob := filepath.Join(GlobalGroupPath, StrPacks, StrSplat, StrAliases)
 	list, err := filepath.Glob(glob)
 	if err != nil {
 		warn("Can not find aliases")
@@ -230,6 +231,7 @@ func MapAliases(done chan bool) {
 	}
 }
 
+// ResolveAlias gets a concrete version name.
 func ResolveAlias(pack, alias string) (concrete string) {
 	if aliases, ok := aliasesMap[pack]; ok {
 		if concrete, ok := aliases[alias]; ok {
@@ -239,6 +241,7 @@ func ResolveAlias(pack, alias string) (concrete string) {
 	return alias
 }
 
+// WrapBin executes an executable installed with one of the current versions.
 func WrapBin(bin string) {
 	var pack, version string
 	var ok bool
@@ -250,7 +253,7 @@ func WrapBin(bin string) {
 		fail("No version set for package %s", pack)
 	}
 
-	path := filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, bin)
+	path := filepath.Join(GlobalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, bin)
 	if util.NotExist(path) {
 		fail("No executable %s for version %s of %s", bin, version, pack)
 	}
@@ -259,9 +262,9 @@ func WrapBin(bin string) {
 	}
 }
 
-func init() {
-	globalGroupPath, globalDirPath = FindGlobalGroup()
-	localGroupPath, localDirPath = FindLocalGroup()
+func Setup() {
+	GlobalGroupPath, GlobalDirPath = FindGlobalGroup()
+	LocalGroupPath, LocalDirPath = FindLocalGroup()
 
 	done := make(chan bool)
 
@@ -288,7 +291,9 @@ func init() {
 }
 
 func main() {
-	// If the name of this file isn't xvm, but go, java, etc.,
+	Setup()
+
+	// If the name of this file isn't xvm,
 	// find a relevant binary and execute it
 	name := filepath.Base(os.Args[0])
 	if name != "xvm"+OSExt {
@@ -347,10 +352,10 @@ func argWrap(min, max int, fn func()) {
 }
 
 func initCmd() {
-	if localGroupPath == pwd {
+	if LocalGroupPath == PWD {
 		fail("Group already exists")
 	}
-	path := filepath.Join(pwd, OSDir, StrVersions)
+	path := filepath.Join(PWD, OSDir, StrVersions)
 	if err := os.MkdirAll(path, util.PermPublic); err != nil {
 		fail("")
 	}
@@ -371,23 +376,23 @@ func whichCmd() {
 
 	if pack == "" {
 		if group == StrGlobal {
-			fmt.Println(globalDirPath)
+			fmt.Println(GlobalDirPath)
 		} else {
-			fmt.Println(localDirPath)
+			fmt.Println(LocalDirPath)
 		}
 		return
 	}
 
 	if group != StrGlobal {
 		if _, ok = localMap[pack]; ok {
-			fmt.Println(localGroupPath)
+			fmt.Println(LocalGroupPath)
 			return
 		}
 	}
 
 	if group != StrLocal {
 		if _, ok = globalMap[pack]; ok {
-			fmt.Println(globalGroupPath)
+			fmt.Println(GlobalGroupPath)
 			return
 		}
 	}
@@ -427,13 +432,13 @@ func currentCmd() {
 }
 
 func removeCmd() {
-	if localGroupPath == globalGroupPath {
+	if LocalGroupPath == GlobalGroupPath {
 		fail("Cannot remove global group")
 	}
-	if localGroupPath != pwd {
+	if LocalGroupPath != PWD {
 		fail("Group does not exist")
 	}
-	if err := os.RemoveAll(filepath.Join(pwd, OSDir)); err != nil {
+	if err := os.RemoveAll(filepath.Join(PWD, OSDir)); err != nil {
 		fail(err.Error())
 	}
 }
@@ -471,10 +476,10 @@ func setCmd() {
 	pack := os.Args[2]
 	version := ResolveAlias(pack, os.Args[3])
 
-	base := localGroupPath
+	base := LocalGroupPath
 	if len(os.Args) == 5 {
 		if os.Args[4] == StrGlobal {
-			base = globalGroupPath
+			base = GlobalGroupPath
 		} else if os.Args[4] != StrLocal {
 			fmt.Println(Usage)
 			os.Exit(1)
@@ -495,10 +500,10 @@ func setCmd() {
 func unsetCmd() {
 	pack := os.Args[2]
 
-	base := localGroupPath
+	base := LocalGroupPath
 	if len(os.Args) == 4 {
 		if os.Args[3] == StrGlobal {
-			base = globalGroupPath
+			base = GlobalGroupPath
 		} else if os.Args[3] != StrLocal {
 			fmt.Println(Usage)
 			os.Exit(1)
@@ -516,9 +521,9 @@ func pullCmd() {
 
 	var bin string
 	if pack == StrPack {
-		bin = filepath.Join(globalGroupPath, StrBin, "pull")
+		bin = filepath.Join(GlobalGroupPath, StrBin, "pull")
 	} else {
-		bin = filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, "pull")
+		bin = filepath.Join(GlobalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, "pull")
 	}
 
 	if err := util.Cmd(bin); err != nil {
@@ -532,9 +537,9 @@ func dropCmd() {
 
 	var path string
 	if pack == StrPack {
-		path = filepath.Join(globalGroupPath, StrPacks, version)
+		path = filepath.Join(GlobalGroupPath, StrPacks, version)
 	} else {
-		path = filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version)
+		path = filepath.Join(GlobalGroupPath, StrPacks, pack, StrInstalled, version)
 	}
 
 	if err := os.RemoveAll(path); err != nil {
@@ -548,9 +553,9 @@ func editCmd() {
 
 	var path string
 	if pack == StrPack {
-		path = filepath.Join(globalGroupPath, StrPacks, version)
+		path = filepath.Join(GlobalGroupPath, StrPacks, version)
 	} else {
-		path = filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version)
+		path = filepath.Join(GlobalGroupPath, StrPacks, pack, StrInstalled, version)
 	}
 
 	edit, ok := os.LookupEnv("EDITOR")
@@ -573,9 +578,9 @@ func pushCmd() {
 
 	var bin string
 	if pack == StrPack {
-		bin = filepath.Join(globalGroupPath, StrBin, "pull")
+		bin = filepath.Join(GlobalGroupPath, StrBin, "pull")
 	} else {
-		bin = filepath.Join(globalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, "pull")
+		bin = filepath.Join(GlobalGroupPath, StrPacks, pack, StrInstalled, version, StrBin, "pull")
 	}
 
 	if err := util.Cmd(bin); err != nil {
